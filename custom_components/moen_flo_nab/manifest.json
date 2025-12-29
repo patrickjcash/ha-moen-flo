@@ -6,5 +6,5 @@
   "documentation": "https://github.com/patrickjcash/ha-moen-flo",
   "iot_class": "cloud_polling",
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
