@@ -71,14 +71,12 @@ class MoenFloNABBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
     def device_info(self):
         """Return device info."""
         info = self.device_data.get("info", {})
-        # Try both firmware version field names from API
-        fw_version = info.get("fwVersion") or info.get("firmwareVersion") or info.get("deviceFirmware")
         return {
             "identifiers": {(DOMAIN, self.device_duid)},
             "name": self.device_name,
             "manufacturer": "Moen",
             "model": "Flo NAB Sump Pump Monitor",
-            "sw_version": fw_version if fw_version else None,
+            "sw_version": info.get("firmwareVersion"),
         }
 
 
