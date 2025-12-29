@@ -2,6 +2,9 @@
 
 A custom Home Assistant integration for the Moen Flo NAB (Sump Pump Monitor) device, providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
 
+> **⚠️ IMPORTANT DISCLAIMER**
+> This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
+
 ## Features
 
 ### Sensors
@@ -260,4 +263,39 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## Disclaimer
 
-This is an unofficial integration and is not affiliated with, endorsed by, or supported by Moen or Fortune Brands Home & Security, Inc. Use at your own risk.
+**IMPORTANT: READ BEFORE USE**
+
+This is an **unofficial, community-developed integration** and is:
+- **NOT affiliated with, endorsed by, or supported by** Moen or Fortune Brands Home & Security, Inc.
+- Provided "AS IS" without warranty of any kind, express or implied
+- **FOR INFORMATIONAL PURPOSES ONLY** - not intended as a safety-critical system
+- May stop working at any time due to API changes, device firmware updates, or service modifications
+
+### Limitation of Liability
+
+**THE AUTHORS AND CONTRIBUTORS OF THIS INTEGRATION SHALL NOT BE LIABLE FOR:**
+- Any damages, losses, or injuries resulting from the use or inability to use this integration
+- Failures to detect water levels, pump malfunctions, flooding, or any other hazardous conditions
+- Data loss, property damage, or any consequential damages
+- Any reliance placed on this integration for safety or critical monitoring
+
+**YOU ASSUME ALL RISK** associated with the use of this integration. This software is provided for convenience and informational purposes only. **DO NOT rely solely on this integration for critical monitoring or safety applications.**
+
+### No Warranty
+
+This integration may:
+- Stop functioning without notice due to API changes
+- Provide inaccurate or delayed information
+- Fail to alert you to critical conditions
+- Experience bugs, errors, or unexpected behavior
+
+**Always maintain proper physical monitoring and safety systems for your sump pump and water detection needs.**
+
+### Use at Your Own Risk
+
+By using this integration, you acknowledge and agree that:
+1. You understand this is unofficial software reverse-engineered from the Moen API
+2. The integration may break at any time without warning
+3. You will not hold the authors liable for any damages or losses
+4. You are responsible for implementing proper backup monitoring systems
+5. This integration does not replace professional water detection or sump pump monitoring systems
