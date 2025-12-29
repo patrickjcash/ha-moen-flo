@@ -5,6 +5,7 @@
   "config_flow": true,
   "documentation": "https://github.com/patrickjcash/ha-moen-flo",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/patrickjcash/ha-moen-flo/issues",
   "requirements": [],
   "version": "1.1.0"
 }
