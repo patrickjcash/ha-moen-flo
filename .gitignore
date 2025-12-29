@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.venv/
 
 # IDE
 .vscode/
@@ -52,3 +53,6 @@ Thumbs.db
 # Home Assistant
 home-assistant.log
 home-assistant_v2.db
+
+# Claude
+.claude/

@@ -45,6 +45,9 @@ async def async_setup_entry(
         # Power Status Sensor
         entities.append(MoenFloNABPowerSensor(coordinator, device_duid, device_name))
 
+        # Water Detection Sensor (remote sensing cable)
+        entities.append(MoenFloNABWaterDetectionSensor(coordinator, device_duid, device_name))
+
     async_add_entities(entities)
 
 
@@ -210,3 +213,71 @@ class MoenFloNABPowerSensor(MoenFloNABBinarySensorBase):
             "battery_percentage": info.get("batteryPercentage"),
             "battery_life_remaining": info.get("batteryLifeRemaining"),
         }
+
+
+class MoenFloNABWaterDetectionSensor(MoenFloNABBinarySensorBase):
+    """Water detection binary sensor (remote sensing cable)."""
+
+    _attr_device_class = BinarySensorDeviceClass.MOISTURE
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_water_detection"
+        self._attr_name = f"{device_name} Water Detection"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if water is detected by remote sensing cable.
+
+        Event ID 250 = Water Detected (critical)
+        Event ID 252 = Water Was Detected (warning - no longer detected)
+        """
+        event_logs = self.device_data.get("event_logs", {})
+        events = event_logs.get("events", [])
+
+        if not events:
+            return False
+
+        # Check most recent water detection events
+        for event in events:
+            event_id = str(event.get("id", ""))
+
+            # Event 250 = Water currently detected
+            if event_id == "250":
+                return True
+
+            # Event 252 = Water was detected (cleared)
+            # If we see this before 250, water is no longer detected
+            if event_id == "252":
+                return False
+
+        return False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        event_logs = self.device_data.get("event_logs", {})
+        events = event_logs.get("events", [])
+
+        if not events:
+            return {}
+
+        # Find the most recent water detection event (250 or 252)
+        for event in events:
+            event_id = str(event.get("id", ""))
+            if event_id in ["250", "252"]:
+                return {
+                    "event_id": event.get("id"),
+                    "event_title": event.get("title"),
+                    "event_severity": event.get("severity"),
+                    "event_time": event.get("time"),
+                    "event_details": event.get("text"),
+                }
+
+        return {}

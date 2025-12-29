@@ -16,13 +16,14 @@ A custom Home Assistant integration for the Moen Flo NAB (Sump Pump Monitor) dev
 
 ### Binary Sensors
 - **Flood Risk** - Alerts when water level reaches critical thresholds
-- **AC Power** - Shows if device is on AC power or battery backup
+- **Water Detection** - Detects water via the remote sensing cable (moisture sensor)
 
 ### Diagnostic Sensors
 These sensors are hidden by default and provide technical device information:
 - **Connectivity** - Device online/offline status with WiFi details
 - **Battery Level** - Battery percentage and remaining life
 - **WiFi Signal** - WiFi signal strength (RSSI in dBm)
+- **AC Power** - Shows if device is on AC power or battery backup
 
 ## Installation
 
@@ -78,6 +79,15 @@ The Flood Risk binary sensor activates when:
 - Water level reaches the critical threshold
 - Active flood alerts are present on the device
 
+### Water Detection
+The Water Detection binary sensor monitors the optional remote sensing cable (moisture sensor). This is separate from the water level sensor in the sump pit. The sensing cable can detect water in areas away from the sump pit, such as:
+- Floor drains
+- Water heater pans
+- Under washing machines
+- Basement floors
+
+When water contacts the sensing cable, the sensor will turn ON and remain ON until the water is cleared.
+
 ### Diagnostic Sensors
 Diagnostic sensors are automatically hidden in the UI but can be accessed through:
 1. **Device Page**: Go to Settings → Devices & Services → Moen Flo NAB → Select your device
@@ -103,6 +113,23 @@ automation:
         data:
           title: "⚠️ Flood Risk Detected!"
           message: "Water level in sump pit is critically high"
+          data:
+            priority: high
+```
+
+#### Example: Water Detection Alert
+```yaml
+automation:
+  - alias: "Water Detected by Sensing Cable"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.sump_pump_water_detection
+        to: "on"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "💧 Water Detected!"
+          message: "Remote sensing cable has detected water"
           data:
             priority: high
 ```
