@@ -12,9 +12,14 @@ A custom Home Assistant integration for the Moen Flo NAB (Sump Pump Monitor) dev
 - **Last Pump Cycle** - Timestamp of the last pump cycle with detailed water in/out data
 
 ### Binary Sensors
-- **Connectivity** - Device online/offline status
 - **Flood Risk** - Alerts when water level reaches critical thresholds
 - **AC Power** - Shows if device is on AC power or battery backup
+
+### Diagnostic Sensors
+These sensors are hidden by default and provide technical device information:
+- **Connectivity** - Device online/offline status with WiFi details
+- **Battery Level** - Battery percentage and remaining life
+- **WiFi Signal** - WiFi signal strength (RSSI in dBm)
 
 ## Installation
 
@@ -69,6 +74,16 @@ The Last Pump Cycle sensor now includes comprehensive data about each pump opera
 The Flood Risk binary sensor activates when:
 - Water level reaches the critical threshold
 - Active flood alerts are present on the device
+
+### Diagnostic Sensors
+Diagnostic sensors are automatically hidden in the UI but can be accessed through:
+1. **Device Page**: Go to Settings → Devices & Services → Moen Flo NAB → Select your device
+2. **Enable in UI**: Click on a diagnostic entity and enable "Show in UI" if you want it visible
+
+These sensors are useful for:
+- Monitoring device connectivity and WiFi strength
+- Tracking battery health and remaining backup power
+- Troubleshooting connection issues
 
 ### Automations
 
@@ -132,6 +147,38 @@ automation:
         data:
           title: "🥶 Low Temperature Alert"
           message: "Sump pit temperature is {{ states('sensor.sump_pump_temperature') }}°F - freeze risk"
+```
+
+#### Example: Low Battery Alert
+```yaml
+automation:
+  - alias: "Sump Pump Low Battery"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.sump_pump_battery
+        below: 20
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "🔋 Low Battery Alert"
+          message: "Sump pump monitor battery is at {{ states('sensor.sump_pump_battery') }}%"
+```
+
+#### Example: WiFi Connection Issue
+```yaml
+automation:
+  - alias: "Sump Pump WiFi Weak Signal"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.sump_pump_wifi_signal
+        below: -80
+        for:
+          minutes: 10
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "📶 Weak WiFi Signal"
+          message: "Sump pump monitor has weak WiFi signal ({{ states('sensor.sump_pump_wifi_signal') }} dBm)"
 ```
 
 ## API Details

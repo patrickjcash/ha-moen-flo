@@ -5,6 +5,40 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-29
+
+### Added
+- **Diagnostic Sensors** - Following Home Assistant best practices:
+  - Battery level sensor with power source and remaining life attributes
+  - WiFi signal strength sensor (RSSI in dBm) with network name and MAC address
+  - Connectivity sensor now marked as diagnostic (auto-hidden in UI)
+- **HACS Metadata** - Added standard HACS configuration:
+  - Minimum Home Assistant version requirement (2024.1.0)
+  - Proper HACS.json configuration
+- **Enhanced Documentation**:
+  - Diagnostic sensors section with access instructions
+  - New automation examples for battery and WiFi monitoring
+  - Updated feature list with diagnostic sensor category
+
+### Fixed
+- **DateTime Timezone Issue** - Fixed "Invalid datetime: missing timezone information" error
+  - Last Pump Cycle sensor now properly provides timezone-aware datetime (UTC)
+  - Added timezone import and handling to ensure Home Assistant compatibility
+
+### Changed
+- Connectivity sensor moved from main binary sensors to diagnostic category
+- Improved README structure with dedicated diagnostic sensors section
+
+### Technical Details
+- Added `EntityCategory.DIAGNOSTIC` to appropriate sensors
+- Imported `SIGNAL_STRENGTH_DECIBELS_MILLIWATT` constant for WiFi sensor
+- Ensured all datetime objects include timezone information using `datetime.timezone.utc`
+
+## [1.1.0] - 2024-12-29
+
+### Added
+- Pump cycle history tracking with detailed water in/out data
+
 ## [1.0.0] - 2024-12-29
 
 ### Added

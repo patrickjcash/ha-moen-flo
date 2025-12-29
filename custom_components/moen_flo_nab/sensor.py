@@ -1,7 +1,7 @@
 """Sensor platform for Moen Flo NAB."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
@@ -13,10 +13,12 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfLength,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -60,6 +62,10 @@ async def async_setup_entry(
 
         # Last Cycle Sensor
         entities.append(MoenFloNABLastCycleSensor(coordinator, device_duid, device_name))
+
+        # Diagnostic Sensors
+        entities.append(MoenFloNABBatterySensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABWiFiSignalSensor(coordinator, device_duid, device_name))
 
     async_add_entities(entities)
 
@@ -319,7 +325,7 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
     def native_value(self) -> datetime | None:
         """Return the last cycle time from pump cycles data."""
         cycles = self.device_data.get("pump_cycles", [])
-        
+
         if cycles and len(cycles) > 0:
             latest = cycles[0]
             try:
@@ -328,10 +334,14 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
                 if date_str:
                     # Remove microseconds and Z if present
                     date_str = date_str.split('.')[0].replace('Z', '')
-                    return datetime.fromisoformat(date_str)
+                    dt = datetime.fromisoformat(date_str)
+                    # Ensure timezone-aware datetime (assume UTC if not specified)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
             except (ValueError, TypeError):
                 pass
-        
+
         return None
 
     @property
@@ -367,5 +377,94 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
                 attrs["last_event_severity"] = last_event.get("severity")
             
             return {k: v for k, v in attrs.items() if v is not None}
-        
+
         return {}
+
+
+class MoenFloNABBatterySensor(MoenFloNABSensorBase):
+    """Battery level diagnostic sensor."""
+
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_battery"
+        self._attr_name = f"{device_name} Battery"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the battery percentage."""
+        info = self.device_data.get("info", {})
+        battery = info.get("batteryPercentage")
+        if battery is not None:
+            try:
+                return round(float(battery), 0)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+
+        attrs = {
+            "power_source": info.get("powerSource"),
+            "battery_life_remaining": info.get("batteryLifeRemaining"),
+        }
+
+        return {k: v for k, v in attrs.items() if v is not None}
+
+
+class MoenFloNABWiFiSignalSensor(MoenFloNABSensorBase):
+    """WiFi signal strength diagnostic sensor."""
+
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:wifi"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_wifi_signal"
+        self._attr_name = f"{device_name} WiFi Signal"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the WiFi RSSI in dBm."""
+        info = self.device_data.get("info", {})
+        rssi = info.get("wifiRssi")
+        if rssi is not None:
+            try:
+                return int(rssi)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+
+        attrs = {
+            "wifi_network": info.get("wifiNetwork"),
+            "mac_address": info.get("macAddress"),
+        }
+
+        return {k: v for k, v in attrs.items() if v is not None}
