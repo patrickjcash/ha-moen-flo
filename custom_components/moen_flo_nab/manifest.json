@@ -1,0 +1,10 @@
+{
+  "domain": "moen_flo_nab",
+  "name": "Moen Flo NAB Sump Pump Monitor",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/patrickjcash/ha-moen-flo",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}

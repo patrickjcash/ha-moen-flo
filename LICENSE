@@ -1,0 +1,84 @@
+MIT License
+
+Copyright (c) 2024 Moen Flo NAB Integration Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Additional Disclaimers
+
+### Unofficial Integration
+This integration is NOT officially affiliated with, endorsed by, or supported by:
+- Moen
+- Fortune Brands Home & Security, Inc.
+- Any official Moen products or services
+
+### Use at Your Own Risk
+This integration:
+- Relies on reverse-engineered API endpoints
+- May break if Moen changes their API
+- Is not supported by Moen technical support
+- Should be used with caution in production environments
+
+### No Warranty
+The authors provide no warranty regarding:
+- Functionality or reliability
+- Data accuracy
+- Continued operation
+- Compatibility with future versions
+
+### Data Privacy
+Users are responsible for:
+- Protecting their Moen account credentials
+- Understanding what data is collected and transmitted
+- Ensuring compliance with any applicable privacy regulations
+
+### Liability
+The authors and contributors are not liable for:
+- Any damages resulting from use of this software
+- Water damage or flood events
+- Equipment failure or malfunction
+- Data loss or security breaches
+- Any other direct or indirect damages
+
+### Trademarks
+"Moen", "Flo", "Flo NAB", and related marks are trademarks of their respective owners.
+This project is not endorsed by or affiliated with the trademark owners.
+
+### API Usage
+This integration:
+- Accesses APIs not intended for public use
+- May violate Moen's Terms of Service
+- Could result in account termination by Moen
+- Should be used responsibly to avoid excessive API calls
+
+### Modifications and Redistribution
+If you modify or redistribute this software:
+- You must include this license and disclaimers
+- You must clearly indicate any changes made
+- You assume all responsibility for your modifications
+- You must not misrepresent the origin of the software
+
+### Contribution
+By contributing to this project, you agree to license your contributions under the same MIT License.
+
+---
+
+For questions or concerns about licensing, please open an issue on GitHub.
