@@ -255,7 +255,7 @@ class MoenNABTester:
     def test_event_logs(self):
         """Test event logs - all events are pump-related"""
         print("\n=== Testing Event Logs ===")
-        
+
         # KEY: Uses UUID, not numeric ID
         body = {
             "cognitoIdentityId": self.cognito_identity_id,
@@ -263,16 +263,16 @@ class MoenNABTester:
             "limit": 50,
             "locale": "en_US"
         }
-        
+
         result = self.invoke_lambda(
             "fbgpg_logs_v1_get_device_logs_user_prod",
             body
         )
-        
+
         if result and "events" in result:
             events = result["events"]
             print(f"✓ Retrieved {len(events)} events")
-            
+
             # All events are pump-related
             # Show the most recent event (most important)
             if events:
@@ -283,7 +283,7 @@ class MoenNABTester:
                 print(f"    Severity: {most_recent.get('severity')}")
                 print(f"    Time: {most_recent.get('time')}")
                 print(f"    Details: {most_recent.get('text')}")
-                
+
                 try:
                     ts = most_recent.get('time').split('.')[0]
                     event_time = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
@@ -293,17 +293,66 @@ class MoenNABTester:
                     print(f"    Time ago: {hours:.1f} hours")
                 except Exception as e:
                     pass
-                
+
                 # Show a few more recent events for context
                 if len(events) > 1:
                     print(f"\n  Recent Event History (last 5):")
                     for i, event in enumerate(events[:5], 1):
                         print(f"    {i}. [{event.get('severity')}] ID {event.get('id')}: {event.get('title')}")
-            
+
+            # Test water detection sensor logic
+            self.test_water_detection_logic(events)
+
             return result
         else:
             print("✗ No event logs available")
         return None
+
+    def test_water_detection_logic(self, events):
+        """Test the water detection binary sensor logic"""
+        print(f"\n=== Testing Water Detection Sensor Logic ===")
+
+        if not events:
+            print("  ✗ No events to test")
+            return
+
+        # This mimics the logic in binary_sensor.py MoenFloNABWaterDetectionSensor
+        water_detected = False
+        water_event = None
+
+        for event in events:
+            event_id = str(event.get("id", ""))
+
+            # Event 250 = Water currently detected
+            if event_id == "250":
+                water_detected = True
+                water_event = event
+                break
+
+            # Event 252 = Water was detected (cleared)
+            if event_id == "252":
+                water_detected = False
+                water_event = event
+                break
+
+        print(f"  Water Detection Sensor State: {'ON (Water Detected)' if water_detected else 'OFF (No Water)'}")
+
+        if water_event:
+            print(f"  Most Recent Water Event:")
+            print(f"    Event ID: {water_event.get('id')}")
+            print(f"    Title: {water_event.get('title')}")
+            print(f"    Severity: {water_event.get('severity')}")
+            print(f"    Time: {water_event.get('time')}")
+            print(f"    Details: {water_event.get('text')}")
+        else:
+            print(f"  No water detection events (250 or 252) found in recent history")
+
+        # Check if there are ANY water-related events in the history
+        water_events = [e for e in events if str(e.get('id', '')) in ['250', '252']]
+        if water_events:
+            print(f"\n  Found {len(water_events)} water detection event(s) in history:")
+            for i, event in enumerate(water_events[:5], 1):
+                print(f"    {i}. ID {event.get('id')}: {event.get('title')} at {event.get('time')}")
 
     def test_pump_cycles(self):
         """Test pump cycle history - the detailed Water In/Out data"""
