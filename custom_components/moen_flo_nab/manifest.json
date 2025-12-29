@@ -7,5 +7,6 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/patrickjcash/ha-moen-flo/issues",
   "requirements": [],
-  "version": "1.2.0"
+  "version": "1.2.0",
+  "integration_type": "device"
 }
