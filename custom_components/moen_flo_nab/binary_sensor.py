@@ -71,12 +71,14 @@ class MoenFloNABBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
     def device_info(self):
         """Return device info."""
         info = self.device_data.get("info", {})
+        # Try both firmware version field names from API
+        fw_version = info.get("fwVersion") or info.get("firmwareVersion") or info.get("deviceFirmware")
         return {
             "identifiers": {(DOMAIN, self.device_duid)},
             "name": self.device_name,
             "manufacturer": "Moen",
             "model": "Flo NAB Sump Pump Monitor",
-            "sw_version": info.get("fwVersion", "Unknown"),
+            "sw_version": fw_version if fw_version else None,
         }
 
 
@@ -181,6 +183,7 @@ class MoenFloNABPowerSensor(MoenFloNABBinarySensorBase):
     """Power status binary sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.POWER
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self,
