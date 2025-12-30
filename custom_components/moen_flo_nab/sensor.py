@@ -16,6 +16,7 @@ from homeassistant.const import (
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfLength,
     UnitOfTemperature,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
@@ -62,6 +63,11 @@ async def async_setup_entry(
 
         # Last Cycle Sensor
         entities.append(MoenFloNABLastCycleSensor(coordinator, device_duid, device_name))
+
+        # Pump History Sensor
+        entities.append(
+            MoenFloNABPumpVolumeSensor(coordinator, device_duid, device_name)
+        )
 
         # Diagnostic Sensors
         entities.append(MoenFloNABBatterySensor(coordinator, device_duid, device_name))
@@ -379,6 +385,109 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
             return {k: v for k, v in attrs.items() if v is not None}
 
         return {}
+
+
+class MoenFloNABPumpVolumeSensor(MoenFloNABSensorBase):
+    """Total pump volume sensor with primary/backup breakdown."""
+
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.GALLONS
+    _attr_icon = "mdi:pump"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_total_volume"
+        self._attr_name = f"{device_name} Total Volume"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the total volume pumped across all cycles."""
+        cycles = self.device_data.get("pump_cycles", [])
+
+        if cycles:
+            total_volume = sum(c.get("emptyVolume", 0) for c in cycles)
+            return round(total_volume, 1)
+
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return primary/backup volume breakdown and cycle history."""
+        cycles = self.device_data.get("pump_cycles", [])
+
+        if not cycles:
+            return {}
+
+        # Calculate primary pump volume (cycles where backup didn't run)
+        primary_cycles = [c for c in cycles if not c.get("backupRan")]
+        primary_volume = sum(c.get("emptyVolume", 0) for c in primary_cycles)
+
+        # Calculate backup pump volume (cycles where backup ran)
+        backup_cycles = [c for c in cycles if c.get("backupRan")]
+        backup_volume = sum(c.get("emptyVolume", 0) for c in backup_cycles)
+
+        # Build cycle history (last 10 cycles)
+        cycle_history = []
+        for cycle in cycles[:10]:
+            try:
+                date_str = cycle.get("date", "")
+                if date_str:
+                    # Parse timestamp
+                    date_str = date_str.split(".")[0].replace("Z", "")
+                    dt = datetime.fromisoformat(date_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+
+                    cycle_history.append(
+                        {
+                            "date": dt.isoformat(),
+                            "volume": round(cycle.get("emptyVolume", 0), 1),
+                            "backup_ran": cycle.get("backupRan", False),
+                        }
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Get oldest and newest cycle dates
+        oldest_date = None
+        newest_date = None
+        if cycles:
+            try:
+                # Newest is first
+                newest_str = cycles[0].get("date", "").split(".")[0].replace("Z", "")
+                newest_dt = datetime.fromisoformat(newest_str)
+                if newest_dt.tzinfo is None:
+                    newest_dt = newest_dt.replace(tzinfo=timezone.utc)
+                newest_date = newest_dt.isoformat()
+
+                # Oldest is last
+                oldest_str = cycles[-1].get("date", "").split(".")[0].replace("Z", "")
+                oldest_dt = datetime.fromisoformat(oldest_str)
+                if oldest_dt.tzinfo is None:
+                    oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                oldest_date = oldest_dt.isoformat()
+            except (ValueError, TypeError, IndexError):
+                pass
+
+        attrs = {
+            "primary_volume": round(primary_volume, 1),
+            "backup_volume": round(backup_volume, 1),
+            "total_cycles": len(cycles),
+            "primary_cycles": len(primary_cycles),
+            "backup_cycles": len(backup_cycles),
+            "cycle_history": cycle_history,
+            "oldest_cycle_date": oldest_date,
+            "newest_cycle_date": newest_date,
+        }
+
+        return {k: v for k, v in attrs.items() if v is not None}
 
 
 class MoenFloNABBatterySensor(MoenFloNABSensorBase):
