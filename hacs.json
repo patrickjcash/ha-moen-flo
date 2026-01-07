@@ -1,5 +1,5 @@
 {
-  "name": "Moen Flo NAB Sump Pump Monitor",
+  "name": "Moen Smart Sump Pump Monitor",
   "filename": "moen_flo_nab",
   "render_readme": true,
   "homeassistant": "2024.1.0",

@@ -3,10 +3,11 @@ Moen NAB API - Test Script
 Tests all available data endpoints for Home Assistant integration planning.
 
 USAGE:
-    python nab_test.py <moen_username> <moen_password>
+    # Create .env file in project root with:
+    # MOEN_USERNAME=your_email@example.com
+    # MOEN_PASSWORD=your_password
 
-    Example:
-    python nab_test.py user@example.com mypassword
+    python nab_test.py
 
     Output: Creates a JSON file with timestamp containing all API responses
 
@@ -21,7 +22,19 @@ KEY FINDINGS:
 import requests
 import json
 import sys
+import os
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Look for .env in project root (parent of tests directory)
+    env_path = Path(__file__).parent.parent / '.env'
+    load_dotenv(env_path)
+except ImportError:
+    print("Warning: python-dotenv not installed. Install with: pip install python-dotenv")
+    sys.exit(1)
 
 # API Configuration
 OAUTH_BASE = "https://4j1gkf0vji.execute-api.us-east-2.amazonaws.com/prod/v1"
@@ -357,33 +370,36 @@ class MoenNABTester:
     def test_pump_cycles(self):
         """Test pump cycle history - the detailed Water In/Out data"""
         print("\n=== Testing Pump Cycle History ===")
-        
+
         # KEY: Must use numeric clientId and type='session'
         body = {
             "cognitoIdentityId": self.cognito_identity_id,
             "duid": self.client_id_numeric,  # Numeric ID, NOT UUID
             "type": "session",  # This is the magic parameter!
-            "limit": 10,
+            "limit": 50,  # Get more cycles to analyze
             "locale": "en_US"
         }
-        
+
         result = self.invoke_lambda(
             "fbgpg_usage_v1_get_my_usage_device_history_prod",
             body
         )
-        
+
         if result and "usage" in result and len(result["usage"]) > 0:
             cycles = result["usage"]
             print(f"✓ Retrieved {len(cycles)} pump cycles")
-            
-            # Show the most recent cycle
+
+            # Show the most recent cycle in detail
             latest = cycles[0]
             print(f"\n  Most Recent Cycle:")
             print(f"    Time: {latest.get('date')}")
             print(f"    Water In: {latest.get('fillVolume')} {latest.get('fillVolumeUnits')} for {latest.get('fillTimeMS')/1000:.0f} sec")
             print(f"    Water Out: {latest.get('emptyVolume')} {latest.get('emptyVolumeUnits')} in {latest.get('emptyTimeMS')/1000:.0f} sec")
             print(f"    Backup Ran: {latest.get('backupRan')}")
-            
+            print(f"\n    Full cycle data structure:")
+            for key, value in latest.items():
+                print(f"      {key}: {value}")
+
             # Calculate time since last cycle
             try:
                 ts = latest.get('date').split('.')[0]
@@ -392,20 +408,43 @@ class MoenNABTester:
                 diff = now - cycle_time
                 minutes = diff.total_seconds() / 60
                 if minutes < 60:
-                    print(f"    Time ago: {minutes:.0f} min")
+                    print(f"\n    Time ago: {minutes:.0f} min")
                 else:
                     print(f"    Time ago: {minutes/60:.1f} hours")
             except:
                 pass
-            
-            # Show summary of recent cycles
-            if len(cycles) > 1:
-                print(f"\n  Recent Cycles Summary:")
-                total_gallons = sum(c.get('emptyVolume', 0) for c in cycles)
-                backup_count = sum(1 for c in cycles if c.get('backupRan'))
-                print(f"    Total gallons (last {len(cycles)} cycles): {total_gallons:.1f} gal")
-                print(f"    Backup pump engaged: {backup_count}/{len(cycles)} times")
-            
+
+            # Analyze volume data to understand primary vs backup tracking
+            print(f"\n  Volume Analysis for History Sensor:")
+
+            # Calculate primary pump volume (cycles where backup didn't run)
+            primary_cycles = [c for c in cycles if not c.get('backupRan')]
+            primary_volume = sum(c.get('emptyVolume', 0) for c in primary_cycles)
+
+            # Calculate backup pump volume (cycles where backup ran)
+            backup_cycles = [c for c in cycles if c.get('backupRan')]
+            backup_volume = sum(c.get('emptyVolume', 0) for c in backup_cycles)
+
+            # Total volume
+            total_volume = sum(c.get('emptyVolume', 0) for c in cycles)
+
+            print(f"    Total cycles: {len(cycles)}")
+            print(f"    Primary-only cycles: {len(primary_cycles)} ({primary_volume:.1f} gal)")
+            print(f"    Backup-engaged cycles: {len(backup_cycles)} ({backup_volume:.1f} gal)")
+            print(f"    Total volume pumped: {total_volume:.1f} gal")
+
+            # Show cycle-by-cycle breakdown (last 10)
+            print(f"\n  Last 10 Cycles Breakdown:")
+            print(f"    {'Date':<20} {'Volume':>8} {'Backup':>7} {'Fill Time':>10} {'Pump Time':>10}")
+            print(f"    {'-'*70}")
+            for i, cycle in enumerate(cycles[:10], 1):
+                date = cycle.get('date', '')[:19]  # Trim to readable format
+                volume = cycle.get('emptyVolume', 0)
+                backup = 'YES' if cycle.get('backupRan') else 'no'
+                fill_sec = cycle.get('fillTimeMS', 0) / 1000
+                pump_sec = cycle.get('emptyTimeMS', 0) / 1000
+                print(f"    {date:<20} {volume:>6.1f} gal {backup:>7} {fill_sec:>8.0f}s {pump_sec:>9.0f}s")
+
             return result
         else:
             print("✗ No pump cycle history available")
@@ -464,9 +503,16 @@ class MoenNABTester:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python moen_nab_test_corrected.py <username> <password>")
+    # Get credentials from environment variables
+    username = os.getenv('MOEN_USERNAME')
+    password = os.getenv('MOEN_PASSWORD')
+
+    if not username or not password:
+        print("ERROR: MOEN_USERNAME and MOEN_PASSWORD must be set in .env file")
+        print("\nCreate a .env file in the project root with:")
+        print("MOEN_USERNAME=your_email@example.com")
+        print("MOEN_PASSWORD=your_password")
         sys.exit(1)
-    
-    tester = MoenNABTester(sys.argv[1], sys.argv[2])
+
+    tester = MoenNABTester(username, password)
     tester.run_full_test()

@@ -1,6 +1,8 @@
-# Moen Flo NAB Sump Pump Monitor - Home Assistant Integration
+# Moen Smart Sump Pump Monitor - Home Assistant Integration
 
-A custom Home Assistant integration for the Moen Flo NAB (Sump Pump Monitor) device, providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
+A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model S2000ESUSA), providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
+
+> **Note:** This device was previously branded as "Moen Flo Smart Sump Pump Monitor". The product line has been rebranded to simply "Moen Smart Sump Pump Monitor".
 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
@@ -29,7 +31,7 @@ These sensors are hidden by default and provide technical device information:
 
 ### HACS (Recommended)
 1. Add this repository as a custom repository in HACS
-2. Search for "Moen Flo NAB" in HACS
+2. Search for "Moen Smart Sump Pump Monitor" in HACS
 3. Click "Install"
 4. Restart Home Assistant
 
@@ -42,7 +44,7 @@ These sensors are hidden by default and provide technical device information:
 ### Via UI (Recommended)
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
-3. Search for "Moen Flo NAB"
+3. Search for "Moen Smart Sump Pump Monitor"
 4. Enter your Moen account email and password
 5. Click **Submit**
 
@@ -213,7 +215,9 @@ automation:
 
 ## API Details
 
-This integration uses the Moen Flo API with AWS Cognito authentication. Key technical details:
+This integration uses the Moen API with AWS Cognito authentication. The API backend is shared with the "Flo" branded devices but uses a different authentication pool.
+
+> **Developer Note:** The API internally uses the term "NAB" (Network Attached Basin) for this device type in endpoint names and identifiers. This is not user-facing and is maintained in the code for clarity when working with the API.
 
 ### Dual ID System
 The API uses two different IDs for the same device:
@@ -255,9 +259,10 @@ The integration polls the API every 5 minutes by default. This balances data fre
 
 ## Supported Devices
 
-This integration is designed for the **Moen Flo NAB (Sump Pump Monitor)**. It will not work with:
-- Moen Flo Smart Water Monitor (different API)
-- Moen Flo Smart Water Shutoff (different API)
+This integration is designed for the **Moen Smart Sump Pump Monitor (model S2000ESUSA)**. It will not work with:
+- Moen Smart Water Monitor (different API)
+- Moen Smart Water Shutoff (different API)
+- Other Flo-branded water devices (different API)
 
 ## Data Privacy
 
