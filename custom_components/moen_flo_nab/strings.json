@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Moen Flo NAB Setup",
+        "title": "Moen Smart Sump Pump Monitor Setup",
         "description": "Enter your Moen account credentials",
         "data": {
           "username": "Email",

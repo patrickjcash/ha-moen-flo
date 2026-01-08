@@ -560,7 +560,6 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
     """Last active alert sensor showing most recent alert."""
 
     _attr_icon = "mdi:alert-circle"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self,
