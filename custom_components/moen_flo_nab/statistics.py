@@ -33,6 +33,7 @@ async def async_import_pump_statistics(
     - Historical graphs and trend analysis
     - Per-cycle granularity
     - Energy Dashboard water consumption tracking
+    - Separate tracking for primary and backup pump usage
 
     Args:
         hass: Home Assistant instance
@@ -41,7 +42,7 @@ async def async_import_pump_statistics(
         cycles: List of pump cycle dictionaries from API
 
     Returns:
-        Number of statistics imported
+        Number of statistics imported across all stat types
     """
     if not cycles:
         _LOGGER.debug("No pump cycles to import for device %s", device_duid)
@@ -50,13 +51,53 @@ async def async_import_pump_statistics(
     # Statistics ID format: domain:object_id (no special chars in object_id)
     # Replace hyphens in UUID with underscores for valid statistic_id
     safe_duid = device_duid.replace("-", "_")
-    statistic_id = f"{DOMAIN}:{safe_duid}_pump_volume"
+
+    # Import three separate statistics: total, primary, and backup
+    total_imported = 0
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "total")
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "primary")
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "backup")
+
+    return total_imported
+
+
+async def _import_stat_type(
+    hass: HomeAssistant,
+    device_duid: str,
+    device_name: str,
+    cycles: list[dict[str, Any]],
+    safe_duid: str,
+    stat_type: str,
+) -> int:
+    """Import statistics for a specific pump type (total, primary, or backup).
+
+    Args:
+        hass: Home Assistant instance
+        device_duid: Device UUID
+        device_name: Friendly device name
+        cycles: List of pump cycle dictionaries from API
+        safe_duid: Device UUID with hyphens replaced by underscores
+        stat_type: Type of statistic ("total", "primary", or "backup")
+
+    Returns:
+        Number of statistics imported for this type
+    """
+    # Define statistic ID and name based on type
+    if stat_type == "total":
+        statistic_id = f"{DOMAIN}:{safe_duid}_pump_volume"
+        stat_name = f"{device_name} Total Pump Volume"
+    elif stat_type == "primary":
+        statistic_id = f"{DOMAIN}:{safe_duid}_primary_pump_volume"
+        stat_name = f"{device_name} Primary Pump Volume"
+    else:  # backup
+        statistic_id = f"{DOMAIN}:{safe_duid}_backup_pump_volume"
+        stat_name = f"{device_name} Backup Pump Volume"
 
     # Define metadata
     metadata = StatisticMetaData(
         has_mean=False,
         has_sum=True,
-        name=f"{device_name} Water Volume",
+        name=stat_name,
         source=DOMAIN,
         statistic_id=statistic_id,
         unit_of_measurement=UnitOfVolume.GALLONS,
@@ -82,7 +123,8 @@ async def async_import_pump_statistics(
         )
         last_sum = last_stat.get("sum", 0.0)
         _LOGGER.debug(
-            "Last imported statistic for %s: %s (sum: %.1f gal)",
+            "Last imported %s statistic for %s: %s (sum: %.1f gal)",
+            stat_type,
             device_duid,
             last_timestamp,
             last_sum,
@@ -116,6 +158,21 @@ async def async_import_pump_statistics(
             if volume <= 0:
                 continue
 
+            # Filter by pump type
+            backup_ran = cycle.get("backupRan", False)
+
+            if stat_type == "total":
+                # Include all cycles for total
+                pass
+            elif stat_type == "primary":
+                # Only include cycles where backup didn't run
+                if backup_ran:
+                    continue
+            else:  # backup
+                # Only include cycles where backup ran
+                if not backup_ran:
+                    continue
+
             cumulative_sum += volume
 
             statistics.append(
@@ -136,12 +193,13 @@ async def async_import_pump_statistics(
     if statistics:
         async_add_external_statistics(hass, metadata, statistics)
         _LOGGER.info(
-            "Imported %d pump cycle statistics for %s (total: %.1f gallons)",
+            "Imported %d %s pump cycle statistics for %s (total: %.1f gallons)",
             len(statistics),
+            stat_type,
             device_name,
             cumulative_sum,
         )
         return len(statistics)
     else:
-        _LOGGER.debug("No new pump cycle statistics to import for %s", device_name)
+        _LOGGER.debug("No new %s pump cycle statistics to import for %s", stat_type, device_name)
         return 0

@@ -56,7 +56,7 @@ class MoenFloNABConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=f"Moen Flo NAB ({user_input[CONF_USERNAME]})",
+                    title=f"Moen Smart Sump Pump Monitor ({user_input[CONF_USERNAME]})",
                     data=user_input,
                 )
 

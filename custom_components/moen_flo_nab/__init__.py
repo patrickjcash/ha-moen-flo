@@ -316,41 +316,74 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         """Calculate pump on/off distance thresholds from pump cycle history.
 
         Analyzes recent pump cycles to determine:
-        - pump_on_distance: Distance when pump starts (basin full)
-        - pump_off_distance: Distance when pump stops (basin empty)
+        - pump_on_distance: Distance when pump starts (basin full) - estimated from basin diameter
+        - pump_off_distance: Distance when pump stops (basin empty) - estimated from basin diameter + volume
 
-        CURRENT LIMITATION:
-        The Moen API does not provide crockTofDistance readings within pump cycle data.
-        Pump cycles only contain volumes (fillVolume, emptyVolume) and durations
-        (fillTimeMS, emptyTimeMS), but not the actual ToF sensor readings during the cycle.
+        SIMPLE HEURISTIC APPROACH:
+        Since pump cycle data doesn't include ToF distance readings, we use a simple geometric
+        calculation based on basin diameter and pump volumes:
 
-        FUTURE ENHANCEMENT:
-        To implement threshold learning, we would need to:
-        1. Store historical crockTofDistance readings with timestamps
-        2. Correlate pump cycle events from logs with ToF readings
-        3. Identify distance values when pump starts (basin full) and stops (basin empty)
-        4. Calculate average thresholds from multiple cycles
+        1. Typical sump basin is 18" (457mm) diameter cylinder
+        2. pump_on_distance: When basin is nearly full (estimated at ~50mm from sensor)
+        3. pump_off_distance: Calculated from volume pumped out + basin geometry
 
-        This would require storing state between coordinator updates and is deferred
-        to a future version.
+        Formula: height_change (mm) = volume (gallons) * 3785.41 / (π * (diameter/2)^2)
 
         Args:
             pump_cycles: List of pump cycle dictionaries from API
 
         Returns:
             Dictionary with pump_on_distance, pump_off_distance, and calibration_cycles
-            Currently returns None for distances until learning is implemented
         """
         if not pump_cycles or len(pump_cycles) == 0:
             return {}
 
-        _LOGGER.debug(f"Pump threshold calculation: {len(pump_cycles)} cycles available, but learning not yet implemented")
+        # Get average pump volume from recent cycles
+        recent_cycles = pump_cycles[:10]  # Last 10 cycles
+        volumes = [c.get("emptyVolume", 0) for c in recent_cycles if c.get("emptyVolume", 0) > 0]
 
-        # Return placeholder values - Basin Fullness sensor will show as unavailable
+        if not volumes:
+            _LOGGER.debug("No valid pump volumes found in cycle data")
+            return {}
+
+        avg_volume_gallons = sum(volumes) / len(volumes)
+
+        # Typical sump basin diameter: 18 inches = 457mm
+        # This is a reasonable assumption for most residential sump pits
+        basin_diameter_mm = 457
+        basin_radius_mm = basin_diameter_mm / 2
+
+        # Calculate basin cross-sectional area in mm²
+        import math
+        basin_area_mm2 = math.pi * (basin_radius_mm ** 2)
+
+        # Convert volume from gallons to mm³
+        volume_mm3 = avg_volume_gallons * 3785410  # 1 gallon = 3,785,410 mm³
+
+        # Calculate height change in mm
+        height_change_mm = volume_mm3 / basin_area_mm2
+
+        # Assume pump starts when water is ~50mm from sensor (basin nearly full)
+        # This is a typical distance for sump pumps to activate
+        pump_on_distance = 50
+
+        # pump_off_distance is when basin is empty after pumping out water
+        pump_off_distance = pump_on_distance + height_change_mm
+
+        _LOGGER.debug(
+            "Calculated pump thresholds: ON=%d mm, OFF=%d mm (avg volume=%.1f gal, height change=%.1f mm)",
+            pump_on_distance,
+            pump_off_distance,
+            avg_volume_gallons,
+            height_change_mm,
+        )
+
         return {
-            "pump_on_distance": None,  # Requires historical distance tracking (not yet implemented)
-            "pump_off_distance": None,  # Requires historical distance tracking (not yet implemented)
-            "calibration_cycles": len(pump_cycles),
+            "pump_on_distance": int(pump_on_distance),
+            "pump_off_distance": int(pump_off_distance),
+            "calibration_cycles": len(recent_cycles),
+            "avg_cycle_volume_gallons": round(avg_volume_gallons, 1),
+            "calculated_height_change_mm": round(height_change_mm, 1),
         }
 
     async def disconnect_mqtt(self):
