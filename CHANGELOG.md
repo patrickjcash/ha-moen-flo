@@ -5,6 +5,25 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-01-08
+
+### Fixed
+- **Last Alert Sensor Category** - Moved from Diagnostic to regular Sensors
+  - Alert status is important user-facing information, not just diagnostic data
+  - Sensor now appears in main sensors list instead of hidden diagnostic section
+- **Integration Setup Naming** - Changed setup title from "Moen Flo NAB Setup" to "Moen Smart Sump Pump Monitor Setup"
+  - Removes internal codename from user-facing configuration flow
+  - Matches manifest name and product branding
+- **Statistics Timestamp Format** - Normalized timestamps to top of hour
+  - Home Assistant requires statistics timestamps with minutes and seconds = 0
+  - Added automatic normalization: `cycle_time.replace(minute=0, second=0, microsecond=0)`
+  - Fixes "Invalid timestamp: timestamps must be from the top of the hour" error
+- **MQTT Connection Builder Blocking** - Additional blocking call fix
+  - `mqtt_connection_builder.websockets_with_default_aws_signing()` performs blocking module imports
+  - Created `_setup_mqtt_connection()` helper method
+  - All MQTT connection setup now runs in executor thread
+  - Fixes "Detected blocking call to listdir" warnings
+
 ## [1.8.1] - 2026-01-08
 
 ### Fixed
