@@ -39,6 +39,9 @@ tests/*_test_*.json
 tests/*_exploration_*.json
 tests/output_*.json
 
+# Archived test scripts (development/debugging only)
+tests/archive/
+
 # Environment variables and secrets
 .env
 .env.local

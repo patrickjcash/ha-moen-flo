@@ -1,50 +1,42 @@
 # Moen Flo NAB Integration Tests
 
-## Test Scripts
+## Active Test Scripts
 
-### nab_test.py
-Main test script for validating the Moen Flo NAB API integration.
-
-**Usage:**
-```bash
-# Create a .env file in the project root with your credentials:
-# MOEN_USERNAME=your_email@example.com
-# MOEN_PASSWORD=your_password
-
-# Run the test
-python tests/nab_test.py
-```
-
-**Features:**
-- Tests authentication with Moen API
-- Retrieves device list
-- Fetches environment data (temperature/humidity)
-- Gets pump health and cycle data
-- Retrieves event logs
-- Validates all API endpoints
-
-### moen_nab_api_explorer.py
-API exploration tool for discovering and testing Moen Flo NAB endpoints.
+### test_alert_sensor.py
+Test script for validating alert processing logic.
 
 **Usage:**
 ```bash
-python tests/moen_nab_api_explorer.py
+python tests/test_alert_sensor.py
 ```
 
 **Features:**
-- Interactive API endpoint testing
-- Exports responses to JSON files (gitignored)
-- Helpful for debugging and API discovery
+- Displays all mapped alert codes with descriptions
+- Processes example alert data to show sensor behavior
+- Demonstrates how Last Alert sensor determines state
+- Shows whether Flood Risk binary sensor would trigger
 
-## Test Output Files
+**Purpose:** Verify alert code mappings and sensor logic without requiring API access.
 
-Test scripts may generate JSON files containing API responses. These files are automatically gitignored to prevent committing sensitive data.
+---
 
-**Gitignored patterns:**
-- `tests/*.json`
-- `tests/*_test_*.json`
-- `tests/*_exploration_*.json`
-- `tests/output_*.json`
+## Archived Test Scripts
+
+The `archive/` folder contains diagnostic and development scripts that were useful during integration development but are not needed for regular use. **This folder is gitignored and not included in releases.**
+
+### Development/Debugging Scripts (in archive/)
+- `moen_nab_api_explorer.py` - Interactive API endpoint testing
+- `compare_all_shadow_data.py` - Complete shadow vs cached data comparison
+- `compare_shadow_vs_cached.py` - Water level data comparison
+- `test_shadow_api_live.py` - Real-time shadow API monitoring
+- `check_water_level_simple.py` - Quick water level diagnostic
+- `debug_shadow_structure.py` - Shadow data structure analysis
+- `test_shadow_workflow.py` - Shadow trigger/retrieve workflow test
+- `test_live_shadow_integration.py` - Live integration testing
+
+**Purpose:** These scripts were used during development to reverse-engineer the Moen API, discover shadow endpoints, and validate live telemetry. They contain development/debugging code and are not needed for production use.
+
+---
 
 ## Requirements
 
@@ -59,7 +51,7 @@ pip install aiohttp python-dotenv
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (for archived test scripts that require API access):
 
 ```bash
 MOEN_USERNAME=your_email@example.com
@@ -68,9 +60,20 @@ MOEN_PASSWORD=your_password
 
 **Note:** The `.env` file is gitignored and will never be committed.
 
+## Test Output Files
+
+Test scripts may generate JSON files containing API responses. These files are automatically gitignored to prevent committing sensitive data.
+
+**Gitignored patterns:**
+- `tests/*.json`
+- `tests/*_test_*.json`
+- `tests/*_exploration_*.json`
+- `tests/output_*.json`
+- `tests/archive/` (entire folder)
+
 ## Testing Best Practices
 
-1. **Never commit sensitive data** - All JSON output files are gitignored
+1. **Never commit sensitive data** - All JSON output files and archive folder are gitignored
 2. **Use .env for credentials** - Never hardcode credentials in test scripts
 3. **Check API responses** - Verify data structure hasn't changed
 4. **Test authentication first** - Ensure credentials work before testing endpoints

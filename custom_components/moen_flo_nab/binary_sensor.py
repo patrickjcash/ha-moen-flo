@@ -137,24 +137,31 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
 
     @property
     def is_on(self) -> bool:
-        """Return true if there is a flood risk."""
+        """Return true if there is a flood risk.
+
+        This sensor triggers when:
+        - droplet.floodRisk is set to a value other than "unknown"
+        - ANY active alert exists (pump failures, water detection, etc.)
+
+        Alert examples: 258=Primary Pump Failed, 260=Backup Pump Failed,
+                       250=Water Detected, 254=Critical Flood
+        """
         info = self.device_data.get("info", {})
         droplet = info.get("droplet", {})
-        
+
         # Check droplet flood risk status
         flood_risk = droplet.get("floodRisk")
         if flood_risk and flood_risk != "unknown":
             return True
-        
-        # Check for active flood-related alerts
+
+        # Check for ANY active alerts
         alerts = info.get("alerts", {})
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            if "active" in state:
-                # Alert IDs: 254=Critical Flood, 256=High Flood, 258=Flood Risk
-                if alert_id in ["254", "256", "258"]:
-                    return True
-        
+            # Alert is active if state contains "active" and NOT "inactive"
+            if "active" in state and "inactive" not in state:
+                return True
+
         return False
 
     @property

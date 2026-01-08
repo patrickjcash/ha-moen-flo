@@ -29,29 +29,95 @@ These sensors are hidden by default and provide technical device information:
 
 ## Installation
 
-### HACS (Recommended)
-1. Add this repository as a custom repository in HACS
-2. Search for "Moen Smart Sump Pump Monitor" in HACS
-3. Click "Install"
-4. Restart Home Assistant
+### Prerequisites
+- Home Assistant 2024.1 or newer
+- A Moen Smart Sump Pump Monitor (S2000ESUSA) registered to your Moen account
+- Your Moen account email and password
 
-### Manual Installation
-1. Copy the `custom_components/moen_flo_nab` directory to your Home Assistant's `custom_components` directory
-2. Restart Home Assistant
+### Method 1: HACS (Recommended)
+
+HACS (Home Assistant Community Store) makes installation and updates easy.
+
+1. **Install HACS** (if not already installed)
+   - Follow the official HACS installation guide: https://hacs.xyz/docs/setup/download
+   - Restart Home Assistant after HACS installation
+
+2. **Add Custom Repository**
+   - Open HACS in Home Assistant
+   - Click the three dots menu (⋮) in the top right
+   - Select "Custom repositories"
+   - Add this repository URL: `https://github.com/patrickjcash/ha-moen-flo`
+   - Select category: "Integration"
+   - Click "Add"
+
+3. **Install Integration**
+   - In HACS, search for "Moen Smart Sump Pump Monitor"
+   - Click on the integration
+   - Click "Download"
+   - Restart Home Assistant
+
+### Method 2: Manual Installation
+
+1. **Download Files**
+   ```bash
+   cd /config
+   git clone https://github.com/patrickjcash/ha-moen-flo.git
+   ```
+
+2. **Copy Files**
+   ```bash
+   cp -r ha-moen-flo/custom_components/moen_flo_nab /config/custom_components/
+   ```
+
+   Your directory structure should look like:
+   ```
+   config/
+   ├── custom_components/
+   │   └── moen_flo_nab/
+   │       ├── __init__.py
+   │       ├── manifest.json
+   │       ├── api.py
+   │       ├── config_flow.py
+   │       ├── sensor.py
+   │       ├── binary_sensor.py
+   │       ├── const.py
+   │       └── strings.json
+   ```
+
+3. **Restart Home Assistant**
 
 ## Configuration
 
-### Via UI (Recommended)
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
+1. Navigate to **Settings** → **Devices & Services**
+2. Click the **+ Add Integration** button
 3. Search for "Moen Smart Sump Pump Monitor"
 4. Enter your Moen account email and password
 5. Click **Submit**
 
 The integration will automatically discover your devices and create all sensors.
 
-### Via YAML (Not Supported)
-This integration only supports configuration through the UI.
+### Verification
+
+After setup, verify all entities are created:
+
+**Sensors:**
+- `sensor.sump_pump_water_level`
+- `sensor.sump_pump_temperature`
+- `sensor.sump_pump_humidity`
+- `sensor.sump_pump_daily_pump_capacity`
+- `sensor.sump_pump_last_pump_cycle`
+
+**Binary Sensors:**
+- `binary_sensor.sump_pump_flood_risk`
+- `binary_sensor.sump_pump_water_detection`
+
+**Diagnostic Sensors (hidden by default):**
+- `binary_sensor.sump_pump_connectivity`
+- `binary_sensor.sump_pump_ac_power`
+- `sensor.sump_pump_battery`
+- `sensor.sump_pump_wifi_signal`
+
+Wait 5 minutes for the first update cycle, then verify sensor values match what you see in the Moen mobile app.
 
 ## Usage
 

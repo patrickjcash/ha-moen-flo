@@ -5,6 +5,76 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-01-07
+
+### Added
+- **Last Alert Sensor** - New diagnostic sensor showing the most recent active alert:
+  - Displays human-readable alert description (e.g., "Primary Pump Failed")
+  - Shows "No active alerts" when system is healthy
+  - Attributes include all active alerts with timestamps and details
+  - Includes up to 5 recent inactive alerts for historical context
+  - Alert codes mapped from decompiled Moen app strings
+
+### Changed
+- **Flood Risk Binary Sensor** - Enhanced to properly detect all alert conditions:
+  - Now triggers on ANY active alert (pump failures, water detection, etc.)
+  - Improved alert state detection logic (checks for "active" without "inactive")
+  - More accurate flood risk detection based on actual device state
+  - Added documentation of common alert codes in sensor
+
+### Fixed
+- **Alert Code Mappings** - Corrected alert ID interpretations:
+  - Alert 258 = Primary Pump Failed (not "Flood Risk")
+  - Alert 260 = Backup Pump Failed
+  - Alert 250 = Water Detected (remote sensing cable)
+  - Alert 266 = Backup Pump Test Failed
+  - Alert 268 = Power Outage (device on battery)
+
+### Technical Details
+- Added `ALERT_CODES` constant mapping common NAB alert IDs to descriptions
+- Alert mappings extracted from decompiled Moen mobile app `strings.xml`
+- Alert sensor processes both active and inactive alerts from shadow/device data
+- Flood risk sensor no longer relies on incorrect alert ID filtering
+
+## [1.5.0] - 2026-01-07
+
+### Added
+- **Live Sensor Readings via AWS IoT Shadow** - MAJOR UPDATE:
+  - Integration now triggers device to take fresh sensor readings every update cycle
+  - Implemented shadow API (`update_shadow` and `get_shadow`) for live telemetry
+  - Water level sensor now receives real-time readings instead of stale cached data
+  - All telemetry sensors updated with live data from device shadow
+
+### Changed
+- **Update Strategy** - Each coordinator update now:
+  1. Sends `sens_on` command to trigger fresh sensor readings
+  2. Waits 3 seconds for device to respond
+  3. Retrieves live data from AWS IoT Device Shadow
+  4. Merges fresh telemetry into device info
+- **Live Data Fields** - The following sensors now use real-time shadow data:
+  - Water level (`crockTofDistance`)
+  - Flood risk analysis (`droplet`)
+  - Connection status (`connected`)
+  - WiFi signal strength (`wifiRssi`)
+  - Battery level (`batteryPercentage`)
+  - Power source (`powerSource`)
+  - Device alerts (`alerts`)
+
+### Technical Details
+- Added `update_shadow()` API method to send device commands
+- Added `get_shadow()` API method to retrieve AWS IoT Shadow state
+- Coordinator triggers `sens_on` command via shadow update endpoint
+- Shadow data structure: `state.reported` contains live sensor readings
+- Implemented fallback to cached data if shadow update fails
+- Added debug logging for shadow data updates
+
+### Background
+Through reverse engineering the Moen mobile app, we discovered that:
+- Water level readings were only updating when "Fine Tune Device" page was opened in app
+- The app sends a shadow update command (`crockCommand: "sens_on"`) to trigger fresh readings
+- Both device list API and shadow API return cached data until device is triggered
+- The solution requires actively requesting fresh readings, then retrieving them from shadow
+
 ## [1.2.0] - 2025-12-29
 
 ### Added

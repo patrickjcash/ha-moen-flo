@@ -24,7 +24,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import MoenFloNABDataUpdateCoordinator
-from .const import DOMAIN
+from .const import ALERT_CODES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +72,9 @@ async def async_setup_entry(
         # Diagnostic Sensors
         entities.append(MoenFloNABBatterySensor(coordinator, device_duid, device_name))
         entities.append(MoenFloNABWiFiSignalSensor(coordinator, device_duid, device_name))
+
+        # Alert Sensor
+        entities.append(MoenFloNABLastAlertSensor(coordinator, device_duid, device_name))
 
     async_add_entities(entities)
 
@@ -577,3 +580,119 @@ class MoenFloNABWiFiSignalSensor(MoenFloNABSensorBase):
         }
 
         return {k: v for k, v in attrs.items() if v is not None}
+
+
+class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
+    """Last active alert sensor showing most recent alert."""
+
+    _attr_icon = "mdi:alert-circle"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_last_alert"
+        self._attr_name = f"{device_name} Last Alert"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the most recent active alert description."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+
+        if not alerts:
+            return "No alerts"
+
+        # Find the most recent active alert
+        most_recent_active = None
+        most_recent_time = None
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            timestamp_str = alert_data.get("timestamp")
+
+            # Check if alert is active
+            if "active" in state and "inactive" not in state:
+                try:
+                    # Parse timestamp
+                    timestamp = datetime.fromisoformat(
+                        timestamp_str.replace("Z", "+00:00")
+                    )
+                    # Track most recent
+                    if most_recent_time is None or timestamp > most_recent_time:
+                        most_recent_time = timestamp
+                        most_recent_active = alert_id
+                except (ValueError, AttributeError):
+                    pass
+
+        # Return description of most recent active alert
+        if most_recent_active:
+            description = ALERT_CODES.get(most_recent_active, f"Alert {most_recent_active}")
+            return description
+
+        return "No active alerts"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return all active and recent alerts with timestamps."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+
+        if not alerts:
+            return {}
+
+        active_alerts = []
+        inactive_alerts = []
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            timestamp_str = alert_data.get("timestamp", "")
+            description = ALERT_CODES.get(alert_id, f"Alert {alert_id}")
+
+            alert_info = {
+                "id": alert_id,
+                "description": description,
+                "timestamp": timestamp_str,
+                "state": state,
+            }
+
+            # Add args if present (some alerts have additional data)
+            if "args" in alert_data:
+                alert_info["args"] = alert_data["args"]
+
+            # Categorize by active/inactive
+            if "active" in state and "inactive" not in state:
+                active_alerts.append(alert_info)
+            else:
+                inactive_alerts.append(alert_info)
+
+        # Sort by timestamp (most recent first)
+        def get_timestamp(alert):
+            try:
+                return datetime.fromisoformat(
+                    alert["timestamp"].replace("Z", "+00:00")
+                )
+            except (ValueError, KeyError):
+                return datetime.min.replace(tzinfo=timezone.utc)
+
+        active_alerts.sort(key=get_timestamp, reverse=True)
+        inactive_alerts.sort(key=get_timestamp, reverse=True)
+
+        attrs = {
+            "active_alert_count": len(active_alerts),
+            "total_alert_count": len(alerts),
+        }
+
+        if active_alerts:
+            attrs["active_alerts"] = active_alerts
+
+        # Include up to 5 most recent inactive alerts for context
+        if inactive_alerts:
+            attrs["recent_inactive_alerts"] = inactive_alerts[:5]
+
+        return attrs

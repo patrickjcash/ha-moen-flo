@@ -291,14 +291,72 @@ class MoenFloNABClient:
 
     async def get_last_pump_cycle(self, device_duid: str) -> Optional[Dict[str, Any]]:
         """Get the most recent pump cycle event from logs.
-        
+
         Note: Event IDs are event TYPES, not sequential numbers.
         Looking at recent events to find the most recent pump-related event.
         """
         logs = await self.get_device_logs(device_duid, limit=50)
-        
+
         # Return the most recent event (they're sorted by time, newest first)
         if logs and len(logs) > 0:
             return logs[0]
-        
+
         return None
+
+    async def update_shadow(self, client_id: int, command: str = "sens_on") -> bool:
+        """Trigger device to update its shadow with fresh sensor readings.
+
+        CRITICAL: Must use numeric clientId, NOT UUID!
+
+        This sends a command to the device to take fresh sensor readings
+        and report them to the AWS IoT Shadow. Common commands:
+        - "sens_on": Turn sensors on and take fresh readings (default)
+        - "updates_off": Turn updates off
+
+        Args:
+            client_id: Numeric client ID
+            command: Shadow command to send (default: "sens_on")
+
+        Returns:
+            True if command was sent successfully
+        """
+        payload = {
+            "clientId": client_id,
+            "crockCommand": command
+        }
+
+        try:
+            await self._invoke_lambda(
+                "smartwater-app-shadow-api-prod-update", payload
+            )
+            return True
+        except Exception as err:
+            _LOGGER.error(f"Failed to update shadow: {err}")
+            return False
+
+    async def get_shadow(self, client_id: int) -> Dict[str, Any]:
+        """Get device shadow (live telemetry) using numeric client_id.
+
+        CRITICAL: Must use numeric clientId, NOT UUID!
+
+        This returns the AWS IoT Device Shadow with live telemetry data.
+        The shadow contains real-time sensor readings including:
+        - crockTofDistance: Water level
+        - droplet: Flood risk analysis
+        - connected: Connection status
+        - wifiRssi: WiFi signal strength
+        - batteryPercentage: Battery level
+        - powerSource: AC/battery status
+        - alerts: Active device alerts
+
+        Returns: Device shadow with state.reported containing live data
+        """
+        payload = {
+            "clientId": client_id
+        }
+
+        response = await self._invoke_lambda(
+            "smartwater-app-shadow-api-prod-get", payload
+        )
+
+        return response if isinstance(response, dict) else {}

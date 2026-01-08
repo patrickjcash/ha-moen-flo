@@ -1,6 +1,7 @@
 """The Moen Flo NAB Sump Pump Monitor integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -96,6 +97,58 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     "clientId": client_id,
                     "info": device,
                 }
+
+                # Trigger device to take fresh sensor readings and update shadow
+                try:
+                    await self.client.update_shadow(client_id, "sens_on")
+                    # Wait for device to respond with fresh readings
+                    await asyncio.sleep(3)
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to trigger shadow update for device %s: %s",
+                        device_duid,
+                        err,
+                    )
+
+                # Get live telemetry from device shadow
+                try:
+                    shadow_data = await self.client.get_shadow(client_id)
+                    # Extract state.reported which contains live sensor data
+                    if isinstance(shadow_data, dict) and "state" in shadow_data:
+                        reported = shadow_data.get("state", {}).get("reported", {})
+                        if reported:
+                            # Merge shadow data into device info
+                            # Shadow data takes precedence for these fields
+                            device_data["info"]["crockTofDistance"] = reported.get(
+                                "crockTofDistance", device_data["info"].get("crockTofDistance")
+                            )
+                            device_data["info"]["droplet"] = reported.get(
+                                "droplet", device_data["info"].get("droplet")
+                            )
+                            device_data["info"]["connected"] = reported.get(
+                                "connected", device_data["info"].get("connected")
+                            )
+                            device_data["info"]["wifiRssi"] = reported.get(
+                                "wifiRssi", device_data["info"].get("wifiRssi")
+                            )
+                            device_data["info"]["batteryPercentage"] = reported.get(
+                                "batteryPercentage", device_data["info"].get("batteryPercentage")
+                            )
+                            device_data["info"]["powerSource"] = reported.get(
+                                "powerSource", device_data["info"].get("powerSource")
+                            )
+                            device_data["info"]["alerts"] = reported.get(
+                                "alerts", device_data["info"].get("alerts")
+                            )
+                            _LOGGER.debug(
+                                "Updated device %s with live shadow data (water level: %s mm)",
+                                device_duid,
+                                reported.get("crockTofDistance"),
+                            )
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to get shadow data for device %s: %s", device_duid, err
+                    )
 
                 # Get environment data (temp/humidity) using numeric ID
                 try:

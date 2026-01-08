@@ -16,3 +16,18 @@ BINARY_SENSOR_POWER = "power"
 
 # Device Classes
 DEVICE_CLASS_WATER_LEVEL = "distance"
+
+# Alert Code Mappings (from decompiled Moen app strings.xml)
+# These are the common NAB (Sump Pump Monitor) alert codes
+ALERT_CODES = {
+    "250": "Water Detected",  # Critical - Remote sensing cable detected water
+    "252": "Water Was Detected",  # Warning - Water no longer detected
+    "254": "Critical Flood Risk",  # Critical flood level
+    "256": "High Flood Risk",  # High water level
+    "258": "Primary Pump Failed",  # Primary pump failed to engage
+    "260": "Backup Pump Failed",  # Backup pump failed to engage
+    "262": "Primary Pump Lagging",  # Primary pump can't keep up
+    "264": "Backup Pump Lagging",  # Backup pump can't keep up
+    "266": "Backup Pump Test Failed",  # Backup pump test failed
+    "268": "Power Outage",  # Device on battery power
+}
