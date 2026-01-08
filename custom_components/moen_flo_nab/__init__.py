@@ -219,11 +219,15 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 try:
                     cycles = await self.client.get_pump_cycles(client_id, limit=10)
                     device_data["pump_cycles"] = cycles
+
+                    # Calculate pump thresholds from cycle history
+                    device_data["pump_thresholds"] = self._calculate_pump_thresholds(cycles)
                 except Exception as err:
                     _LOGGER.warning(
                         "Failed to get pump cycles for device %s: %s", device_duid, err
                     )
                     device_data["pump_cycles"] = []
+                    device_data["pump_thresholds"] = {}
 
                 # Get last pump cycle from logs using UUID
                 try:
@@ -286,6 +290,47 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Device %s normal, polling every %s minutes", device_duid, SCAN_INTERVAL.seconds / 60)
 
             self._last_alert_state[device_duid] = current_state
+
+    def _calculate_pump_thresholds(self, pump_cycles: list) -> dict:
+        """Calculate pump on/off distance thresholds from pump cycle history.
+
+        Analyzes recent pump cycles to determine:
+        - pump_on_distance: Distance when pump starts (basin full)
+        - pump_off_distance: Distance when pump stops (basin empty)
+
+        CURRENT LIMITATION:
+        The Moen API does not provide crockTofDistance readings within pump cycle data.
+        Pump cycles only contain volumes (fillVolume, emptyVolume) and durations
+        (fillTimeMS, emptyTimeMS), but not the actual ToF sensor readings during the cycle.
+
+        FUTURE ENHANCEMENT:
+        To implement threshold learning, we would need to:
+        1. Store historical crockTofDistance readings with timestamps
+        2. Correlate pump cycle events from logs with ToF readings
+        3. Identify distance values when pump starts (basin full) and stops (basin empty)
+        4. Calculate average thresholds from multiple cycles
+
+        This would require storing state between coordinator updates and is deferred
+        to a future version.
+
+        Args:
+            pump_cycles: List of pump cycle dictionaries from API
+
+        Returns:
+            Dictionary with pump_on_distance, pump_off_distance, and calibration_cycles
+            Currently returns None for distances until learning is implemented
+        """
+        if not pump_cycles or len(pump_cycles) == 0:
+            return {}
+
+        _LOGGER.debug(f"Pump threshold calculation: {len(pump_cycles)} cycles available, but learning not yet implemented")
+
+        # Return placeholder values - Basin Fullness sensor will show as unavailable
+        return {
+            "pump_on_distance": None,  # Requires historical distance tracking (not yet implemented)
+            "pump_off_distance": None,  # Requires historical distance tracking (not yet implemented)
+            "calibration_cycles": len(pump_cycles),
+        }
 
     async def disconnect_mqtt(self):
         """Disconnect all MQTT clients."""

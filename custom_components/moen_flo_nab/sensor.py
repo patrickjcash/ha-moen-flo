@@ -43,9 +43,14 @@ async def async_setup_entry(
         device_info = device_data.get("info", {})
         device_name = device_info.get("nickname", f"Sump Pump {device_duid[:8]}")
 
-        # Water Level Sensor
+        # Water Distance Sensor
         entities.append(
-            MoenFloNABWaterLevelSensor(coordinator, device_duid, device_name)
+            MoenFloNABWaterDistanceSensor(coordinator, device_duid, device_name)
+        )
+
+        # Basin Fullness Sensor
+        entities.append(
+            MoenFloNABBasinFullnessSensor(coordinator, device_duid, device_name)
         )
 
         # Temperature Sensor
@@ -111,14 +116,14 @@ class MoenFloNABSensorBase(CoordinatorEntity, SensorEntity):
         }
 
 
-class MoenFloNABWaterLevelSensor(MoenFloNABSensorBase):
-    """Water level sensor - distance from sensor to water surface."""
+class MoenFloNABWaterDistanceSensor(MoenFloNABSensorBase):
+    """Water distance sensor - distance from sensor to water surface."""
 
     _attr_device_class = SensorDeviceClass.DISTANCE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
     _attr_suggested_display_precision = 1
-    _attr_icon = "mdi:waves"
+    _attr_icon = "mdi:arrow-expand-vertical"
 
     def __init__(
         self,
@@ -128,15 +133,16 @@ class MoenFloNABWaterLevelSensor(MoenFloNABSensorBase):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
-        self._attr_unique_id = f"{device_duid}_water_level"
-        self._attr_name = f"{device_name} Water Level"
+        self._attr_unique_id = f"{device_duid}_water_distance"
+        self._attr_name = f"{device_name} Water Distance"
 
     @property
     def native_value(self) -> float | None:
-        """Return the water level distance in mm.
-        
+        """Return the water distance in mm.
+
         crockTofDistance is in millimeters (282mm = 28.2cm).
-        Lower value = higher water level (water closer to sensor).
+        Lower value = water closer to sensor (basin fuller).
+        Higher value = water farther from sensor (basin emptier).
         """
         info = self.device_data.get("info", {})
         distance = info.get("crockTofDistance")
@@ -154,15 +160,90 @@ class MoenFloNABWaterLevelSensor(MoenFloNABSensorBase):
         droplet = info.get("droplet", {})
         pump_info = info.get("pumpInfo", {})
         main_pump = pump_info.get("main", {})
-        
+
+        # Get pump thresholds from coordinator
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+
         attrs = {
             "distance_cm": round(float(info.get("crockTofDistance", 0)) / 10, 1) if info.get("crockTofDistance") else None,
             "water_trend": droplet.get("trend"),  # rising/stable/receding
             "flood_risk": droplet.get("floodRisk"),
             "basin_diameter_inches": main_pump.get("crockDiameter"),
             "basin_diameter_mm": info.get("crockDiameterMM"),
+            "pump_on_distance": pump_thresholds.get("pump_on_distance"),
+            "pump_off_distance": pump_thresholds.get("pump_off_distance"),
         }
-        
+
+        return {k: v for k, v in attrs.items() if v is not None}
+
+
+class MoenFloNABBasinFullnessSensor(MoenFloNABSensorBase):
+    """Basin fullness sensor - percentage full based on pump cycle thresholds."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_suggested_display_precision = 0
+    _attr_icon = "mdi:hydraulic-oil-level"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_basin_fullness"
+        self._attr_name = f"{device_name} Basin Fullness"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the basin fullness percentage.
+
+        100% = pump on distance (basin full, pump about to start)
+        0% = pump off distance (basin empty, pump just finished)
+
+        Formula: 100 - ((current - pump_on) / (pump_off - pump_on) * 100)
+        """
+        info = self.device_data.get("info", {})
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+
+        current_distance = info.get("crockTofDistance")
+        pump_on_distance = pump_thresholds.get("pump_on_distance")
+        pump_off_distance = pump_thresholds.get("pump_off_distance")
+
+        # Need all three values to calculate
+        if current_distance is None or pump_on_distance is None or pump_off_distance is None:
+            return None
+
+        # Avoid division by zero
+        if pump_off_distance == pump_on_distance:
+            return None
+
+        try:
+            # Calculate fullness percentage
+            # Inverted because lower distance = fuller basin
+            fullness = 100 - ((float(current_distance) - float(pump_on_distance)) /
+                             (float(pump_off_distance) - float(pump_on_distance)) * 100)
+
+            # Clamp to 0-100 range
+            return max(0, min(100, round(fullness, 0)))
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+
+        attrs = {
+            "current_distance_mm": info.get("crockTofDistance"),
+            "pump_on_distance_mm": pump_thresholds.get("pump_on_distance"),
+            "pump_off_distance_mm": pump_thresholds.get("pump_off_distance"),
+            "calibration_cycles": pump_thresholds.get("calibration_cycles", 0),
+        }
+
         return {k: v for k, v in attrs.items() if v is not None}
 
 

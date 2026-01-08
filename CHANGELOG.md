@@ -5,6 +5,31 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-01-08
+
+### Added
+- **Basin Fullness Sensor** - New sensor showing how full the sump basin is (0-100%)
+  - 100% = basin full (pump about to start)
+  - 0% = basin empty (pump just finished)
+  - Currently shows as unavailable until threshold learning is implemented (future enhancement)
+  - Includes attributes: current_distance_mm, pump_on/off_distance_mm, calibration_cycles
+
+### Changed
+- **Water Level → Water Distance** - Renamed for clarity:
+  - Sensor now called "Water Distance" instead of "Water Level"
+  - More accurately describes measurement (distance from sensor to water)
+  - Lower value = water closer to sensor (basin fuller)
+  - Higher value = water farther from sensor (basin emptier)
+  - Changed icon from `mdi:waves` to `mdi:arrow-expand-vertical`
+  - Unique ID changed from `_water_level` to `_water_distance` (may show as new entity)
+  - Added pump threshold attributes: pump_on_distance, pump_off_distance
+
+### Fixed
+- **MQTT Client Import Error** - Restored missing MQTT client code in api.py:
+  - Previous version accidentally reverted api.py to older version without MQTT support
+  - Caused ImportError on Home Assistant startup
+  - All MQTT functionality now properly restored
+
 ## [1.7.0] - 2026-01-08
 
 ### Added
@@ -20,8 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration triggers updates every 5 minutes (normal operation)
   - Adaptive polling during alerts (30s for alerts, 10s for critical)
   - MQTT connection used for triggering only, not push notifications
-- **Water Level Sensor Display** - Added `suggested_display_precision = 1`:
-  - Water level sensor now displays with 1 decimal place (e.g., "26.0 cm")
+- **Water Distance Sensor Display** - Added `suggested_display_precision = 1`:
+  - Water distance sensor now displays with 1 decimal place (e.g., "26.0 cm")
   - Improves readability while maintaining millimeter precision in state
 
 ### Fixed

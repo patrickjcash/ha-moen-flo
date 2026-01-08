@@ -28,7 +28,14 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 ## Features
 
 ### Sensors
-- **Water Level** - Distance from sensor to water surface (millimeters)
+- **Water Distance** - Distance from sensor to water surface (millimeters)
+  - Lower value = water closer to sensor (basin fuller)
+  - Higher value = water farther from sensor (basin emptier)
+  - Includes attributes: distance_cm, water_trend, flood_risk, basin_diameter
+- **Basin Fullness** - Percentage showing how full the sump basin is (0-100%)
+  - 100% = basin full (pump about to start)
+  - 0% = basin empty (pump just finished)
+  - **Note:** Currently unavailable - requires threshold learning (future enhancement)
 - **Temperature** - Ambient temperature in the sump pit (°F)
 - **Humidity** - Relative humidity in the sump pit (%)
 - **Daily Pump Capacity** - Percentage of daily pump capacity used
@@ -128,7 +135,8 @@ The integration will automatically discover your devices and create all sensors.
 After setup, verify all entities are created:
 
 **Sensors:**
-- `sensor.sump_pump_water_level`
+- `sensor.sump_pump_water_distance`
+- `sensor.sump_pump_basin_fullness` (currently unavailable until threshold learning implemented)
 - `sensor.sump_pump_temperature`
 - `sensor.sump_pump_humidity`
 - `sensor.sump_pump_daily_pump_capacity`
