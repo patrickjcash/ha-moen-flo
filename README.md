@@ -26,6 +26,7 @@ These sensors are hidden by default and provide technical device information:
 - **Battery Level** - Battery percentage and remaining life
 - **WiFi Signal** - WiFi signal strength (RSSI in dBm)
 - **AC Power** - Shows if device is on AC power or battery backup
+- **Last Alert** - Most recent active alert with human-readable description
 
 ## Installation
 
@@ -116,6 +117,7 @@ After setup, verify all entities are created:
 - `binary_sensor.sump_pump_ac_power`
 - `sensor.sump_pump_battery`
 - `sensor.sump_pump_wifi_signal`
+- `sensor.sump_pump_last_alert`
 
 Wait 5 minutes for the first update cycle, then verify sensor values match what you see in the Moen mobile app.
 
@@ -145,7 +147,9 @@ The Last Pump Cycle sensor now includes comprehensive data about each pump opera
 ### Flood Risk Detection
 The Flood Risk binary sensor activates when:
 - Water level reaches the critical threshold
-- Active flood alerts are present on the device
+- **ANY active alert is present** on the device (pump failures, water detection, power outage, etc.)
+
+The sensor uses live telemetry from the device's AWS IoT Shadow to detect issues in real-time. All active alerts are also exposed in the sensor's attributes for detailed troubleshooting.
 
 ### Water Detection
 The Water Detection binary sensor monitors the optional remote sensing cable (moisture sensor). This is separate from the water level sensor in the sump pit. The sensing cable can detect water in areas away from the sump pit, such as:
@@ -156,6 +160,34 @@ The Water Detection binary sensor monitors the optional remote sensing cable (mo
 
 When water contacts the sensing cable, the sensor will turn ON and remain ON until the water is cleared.
 
+### Alert Monitoring
+The **Last Alert** sensor shows the most recent active alert from your device in plain English:
+- **"Primary Pump Failed"** - Primary pump has failed to engage
+- **"Backup Pump Failed"** - Backup pump has failed to engage
+- **"Water Detected"** - Remote sensing cable detected water
+- **"Power Outage"** - Device is running on battery backup
+- **"No active alerts"** - System is healthy
+
+The sensor attributes provide detailed information about all active and recent inactive alerts, including:
+- Alert timestamps
+- Alert IDs and descriptions
+- Full alert state information
+- Up to 5 recent inactive alerts for historical context
+
+**Supported Alert Codes:**
+- 250: Water Detected
+- 252: Water Was Detected (cleared)
+- 254: Critical Flood Risk
+- 256: High Flood Risk
+- 258: Primary Pump Failed
+- 260: Backup Pump Failed
+- 262: Primary Pump Lagging
+- 264: Backup Pump Lagging
+- 266: Backup Pump Test Failed
+- 268: Power Outage
+
+Unknown alert codes are displayed as "Alert {code}" with full details preserved for troubleshooting.
+
 ### Diagnostic Sensors
 Diagnostic sensors are automatically hidden in the UI but can be accessed through:
 1. **Device Page**: Go to Settings → Devices & Services → Moen Flo NAB → Select your device
@@ -164,14 +196,15 @@ Diagnostic sensors are automatically hidden in the UI but can be accessed throug
 These sensors are useful for:
 - Monitoring device connectivity and WiFi strength
 - Tracking battery health and remaining backup power
+- Viewing active device alerts and system status
 - Troubleshooting connection issues
 
 ### Automations
 
-#### Example: Flood Alert Notification
+#### Example: Alert Notification (Any Issue)
 ```yaml
 automation:
-  - alias: "Sump Pump Flood Risk Alert"
+  - alias: "Sump Pump Alert Detected"
     trigger:
       - platform: state
         entity_id: binary_sensor.sump_pump_flood_risk
@@ -179,10 +212,36 @@ automation:
     action:
       - service: notify.mobile_app
         data:
-          title: "⚠️ Flood Risk Detected!"
-          message: "Water level in sump pit is critically high"
+          title: "⚠️ Sump Pump Alert!"
+          message: "{{ states('sensor.sump_pump_last_alert') }}"
           data:
             priority: high
+```
+
+#### Example: Specific Alert Type (Pump Failure)
+```yaml
+automation:
+  - alias: "Pump Failure Critical Alert"
+    trigger:
+      - platform: state
+        entity_id: sensor.sump_pump_last_alert
+    condition:
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: sensor.sump_pump_last_alert
+            state: "Primary Pump Failed"
+          - condition: state
+            entity_id: sensor.sump_pump_last_alert
+            state: "Backup Pump Failed"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "🚨 PUMP FAILURE!"
+          message: "{{ states('sensor.sump_pump_last_alert') }} - Check immediately!"
+          data:
+            priority: high
+            tag: "pump_failure"
 ```
 
 #### Example: Water Detection Alert
@@ -293,13 +352,29 @@ The API uses two different IDs for the same device:
 ### Endpoints
 - **Authentication**: AWS Cognito User Pool
 - **Device List**: `smartwater-app-device-api-prod-list`
+- **Live Telemetry (Shadow API)**: `smartwater-app-shadow-api-prod-get` / `smartwater-app-shadow-api-prod-update`
 - **Environment Data**: `fbgpg_usage_v1_get_device_environment_latest_prod` (Temperature/Humidity)
 - **Pump Health**: `fbgpg_usage_v1_get_my_usage_device_history_top10_prod`
 - **Pump Cycles**: `fbgpg_usage_v1_get_my_usage_device_history_prod` (Detailed cycle data)
 - **Event Logs**: `fbgpg_logs_v1_get_device_logs_user_prod`
 
+### Live Telemetry via AWS IoT Shadow
+The integration uses the **AWS IoT Device Shadow** API to retrieve real-time sensor readings:
+
+1. **Shadow Update Trigger**: Sends `sens_on` command to device via shadow update endpoint
+2. **Wait Period**: Waits 3 seconds for device to take fresh sensor readings
+3. **Shadow Retrieval**: Retrieves live telemetry from `state.reported` in device shadow
+4. **Data Merge**: Merges fresh shadow data (water level, alerts, connectivity, etc.) with cached device data
+
+This ensures water level readings and alert states are always current, not stale cached values. The shadow API was discovered through reverse engineering the Moen mobile app.
+
 ### Update Interval
-The integration polls the API every 5 minutes by default. This balances data freshness with API rate limits.
+The integration polls the API every 5 minutes by default. Each update:
+- Triggers the device to take fresh sensor readings
+- Retrieves live telemetry from AWS IoT Shadow
+- Updates all sensor values with the latest data
+
+This balances data freshness with API rate limits and device sensor lifespan.
 
 ## Troubleshooting
 
