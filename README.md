@@ -48,6 +48,10 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
    - Restart Home Assistant after HACS installation
 
 2. **Add Custom Repository**
+
+   [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=patrickjcash&repository=ha-moen-flo&category=integration)
+
+   Click the badge above to add this repository to HACS directly, OR:
    - Open HACS in Home Assistant
    - Click the three dots menu (⋮) in the top right
    - Select "Custom repositories"
