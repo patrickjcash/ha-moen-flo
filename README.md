@@ -1,6 +1,10 @@
 # Moen Smart Sump Pump Monitor - Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+![GitHub Release](https://img.shields.io/github/v/release/patrickjcash/ha-moen-flo?style=for-the-badge)
+![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge)
+![License](https://img.shields.io/github/license/patrickjcash/ha-moen-flo?style=for-the-badge)
+![IoT Class](https://img.shields.io/badge/IoT%20Class-Cloud%20Polling-yellow.svg?style=for-the-badge)
 
 A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model S2000ESUSA), providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
 
