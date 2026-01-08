@@ -4,7 +4,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/patrickjcash/ha-moen-flo?style=for-the-badge)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg?style=for-the-badge)
 ![License](https://img.shields.io/github/license/patrickjcash/ha-moen-flo?style=for-the-badge)
-![IoT Class](https://img.shields.io/badge/IoT%20Class-Cloud%20Polling-yellow.svg?style=for-the-badge)
+![IoT Class](https://img.shields.io/badge/IoT%20Class-Cloud%20Polling-blue.svg?style=for-the-badge)
 
 A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model S2000ESUSA), providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
 
@@ -12,6 +12,18 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
+
+## What's New in v1.7.0
+
+🔋 **Battery Preservation** - The integration now automatically stops sensor streaming after data collection, preventing continuous battery drain. This mirrors the behavior of the Moen mobile app and significantly extends battery life during power outages.
+
+Key improvements:
+- Sends `updates_off` command after each data collection cycle
+- Changed IoT class to `cloud_polling` to accurately reflect architecture
+- Water level sensor now displays with 1 decimal place for better readability
+- Fixed potential battery drain from continuous sensor streaming
+
+See the [CHANGELOG](CHANGELOG.md) for complete details.
 
 ## Features
 

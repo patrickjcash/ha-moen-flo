@@ -5,6 +5,45 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-01-08
+
+### Added
+- **Battery Preservation** - Automatic streaming shutdown after data collection:
+  - Sends `updates_off` command after each `sens_on` trigger
+  - Prevents continuous sensor streaming which drains battery
+  - Mirrors Moen mobile app behavior (stops streaming when exiting Fine Tuning screen)
+  - Applied to both MQTT and REST API fallback paths
+
+### Changed
+- **Integration Classification** - Changed `iot_class` from `cloud_push` to `cloud_polling`:
+  - More accurately reflects polling-based architecture
+  - Integration triggers updates every 5 minutes (normal operation)
+  - Adaptive polling during alerts (30s for alerts, 10s for critical)
+  - MQTT connection used for triggering only, not push notifications
+- **Water Level Sensor Display** - Added `suggested_display_precision = 1`:
+  - Water level sensor now displays with 1 decimal place (e.g., "26.0 cm")
+  - Improves readability while maintaining millimeter precision in state
+
+### Fixed
+- **Battery Drain Issue** - Resolved continuous streaming after sensor updates:
+  - Previous versions left device streaming indefinitely after `sens_on` command
+  - Device was streaming ~1 update/second continuously, draining battery
+  - Now properly stops streaming after collecting required data sample
+
+### Technical Details
+- Added `updates_off` command in [__init__.py:134](custom_components/moen_flo_nab/__init__.py#L134) (MQTT path)
+- Added `updates_off` command in [__init__.py:175](custom_components/moen_flo_nab/__init__.py#L175) (REST fallback path)
+- Verified REST API cannot trigger device (MQTT required) - see [MQTT_STREAMING_BEHAVIOR.md](docs/MQTT_STREAMING_BEHAVIOR.md#L144)
+- Command sequence: `sens_on` → wait 2-3s → collect data → `updates_off`
+
+### Background
+Through MQTT monitoring, we discovered:
+- `sens_on` triggers continuous ToF sensor streaming at ~1 Hz
+- Streaming continues indefinitely until `updates_off` is sent
+- Moen mobile app always sends `updates_off` when closing Fine Tuning page
+- Continuous streaming significantly impacts battery life during power outages
+- See detailed analysis in [docs/MQTT_STREAMING_BEHAVIOR.md](docs/MQTT_STREAMING_BEHAVIOR.md)
+
 ## [1.6.0] - 2026-01-07
 
 ### Added
