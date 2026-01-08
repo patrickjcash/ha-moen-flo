@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import MoenFloNABClient, MoenFloNABApiError, MoenFloNABMqttClient
 from .const import DOMAIN
+from .statistics import async_import_pump_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self.devices = {}
         self.mqtt_clients = {}  # Store MQTT clients per device
         self._last_alert_state = {}  # Track alert states for adaptive polling
+        self._first_refresh = True  # Track if this is the first data fetch
 
     async def _async_update_data(self):
         """Fetch data from API."""
@@ -215,13 +217,27 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     device_data["pump_health"] = {}
 
-                # Get pump cycle history using numeric ID (NEW!)
+                # Get pump cycle history using numeric ID
                 try:
-                    cycles = await self.client.get_pump_cycles(client_id, limit=10)
+                    # On first refresh, fetch all available cycles for statistics import
+                    # On subsequent updates, fetch last 50 cycles for incremental updates
+                    limit = 1000 if self._first_refresh else 50
+                    cycles = await self.client.get_pump_cycles(client_id, limit=limit)
                     device_data["pump_cycles"] = cycles
 
                     # Calculate pump thresholds from cycle history
                     device_data["pump_thresholds"] = self._calculate_pump_thresholds(cycles)
+
+                    # Import statistics on first refresh or when we have new cycles
+                    if cycles and (self._first_refresh or len(cycles) > 0):
+                        device_name = device.get("nickname", f"Sump Pump {device_duid[:8]}")
+                        await async_import_pump_statistics(
+                            self.hass,
+                            device_duid,
+                            device_name,
+                            cycles,
+                        )
+
                 except Exception as err:
                     _LOGGER.warning(
                         "Failed to get pump cycles for device %s: %s", device_duid, err
@@ -253,6 +269,11 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Implement adaptive polling based on alert state
                 self._update_poll_interval(device_duid, device_data)
+
+            # Mark first refresh as complete
+            if self._first_refresh:
+                self._first_refresh = False
+                _LOGGER.info("Initial data fetch and statistics import complete")
 
             return data
 

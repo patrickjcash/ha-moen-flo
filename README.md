@@ -13,15 +13,22 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v1.7.0
+## What's New in v1.8.0
 
-🔋 **Battery Preservation** - The integration now automatically stops sensor streaming after data collection, preventing continuous battery drain. This mirrors the behavior of the Moen mobile app and significantly extends battery life during power outages.
+📊 **Long-Term Statistics & Energy Dashboard** - The integration now imports pump volume history as long-term statistics, enabling proper historical tracking and Energy Dashboard integration!
 
-Key improvements:
-- Sends `updates_off` command after each data collection cycle
-- Changed IoT class to `cloud_polling` to accurately reflect architecture
-- Water level sensor now displays with 1 decimal place for better readability
-- Fixed potential battery drain from continuous sensor streaming
+Key features:
+- Automatic import of all pump cycles (weeks of historical data)
+- Works with Home Assistant Energy Dashboard
+- Create custom graphs showing daily, weekly, monthly pump usage
+- Per-cycle granularity with accurate timestamps
+- Incremental updates - only new cycles imported after initial setup
+
+Plus improvements from v1.7.x:
+- Water Distance sensor (renamed from Water Level for clarity)
+- Basin Fullness sensor (future enhancement - currently unavailable)
+- Battery preservation with `updates_off` command
+- Fixed Total Volume sensor behavior (now "Recent Volume")
 
 See the [CHANGELOG](CHANGELOG.md) for complete details.
 
@@ -40,6 +47,13 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 - **Humidity** - Relative humidity in the sump pit (%)
 - **Daily Pump Capacity** - Percentage of daily pump capacity used
 - **Last Pump Cycle** - Timestamp of the last pump cycle with detailed water in/out data
+
+### Long-Term Statistics
+- **Pump Volume Statistics** - Automatically imported for Energy Dashboard integration
+  - Historical pump volume with per-cycle granularity
+  - Enables daily/weekly/monthly graphs
+  - View in Energy Dashboard under "Water" category
+  - Backfills weeks of historical data on first load
 
 ### Binary Sensors
 - **Flood Risk** - Alerts when water level reaches critical thresholds

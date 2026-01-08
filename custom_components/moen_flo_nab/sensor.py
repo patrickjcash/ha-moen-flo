@@ -473,12 +473,21 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
 
 
 class MoenFloNABPumpVolumeSensor(MoenFloNABSensorBase):
-    """Total pump volume sensor with primary/backup breakdown."""
+    """Recent pump volume sensor showing last 50 cycles.
 
-    _attr_device_class = SensorDeviceClass.WATER
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    DEPRECATED: This sensor is deprecated in favor of long-term statistics.
+    The integration now imports pump volume statistics that work with
+    Home Assistant's Energy Dashboard and provide proper historical tracking.
+
+    This sensor remains for backwards compatibility and shows volume from
+    the last 50 cycles only. For historical data, use the statistics entity
+    or view in the Energy Dashboard.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfVolume.GALLONS
     _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self,
@@ -489,11 +498,16 @@ class MoenFloNABPumpVolumeSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_total_volume"
-        self._attr_name = f"{device_name} Total Volume"
+        self._attr_name = f"{device_name} Recent Volume"
 
     @property
     def native_value(self) -> float | None:
-        """Return the total volume pumped across all cycles."""
+        """Return the volume pumped in recent cycles (last 50).
+
+        Note: This is NOT a cumulative total, just the sum of recently
+        fetched cycles. For true historical tracking, use the statistics
+        entity or Energy Dashboard.
+        """
         cycles = self.device_data.get("pump_cycles", [])
 
         if cycles:

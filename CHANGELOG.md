@@ -5,9 +5,16 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.1] - 2026-01-08
+## [1.8.0] - 2026-01-08
 
 ### Added
+- **Long-Term Statistics for Pump Volume** - Proper historical tracking with Energy Dashboard support:
+  - Imports all available pump cycles (up to ~1000) on first load
+  - Creates timestamped statistics for each pump cycle
+  - Works with Home Assistant Energy Dashboard
+  - Enables custom period graphs (daily, weekly, monthly, yearly)
+  - Incremental updates - only imports new cycles after initial load
+  - Automatically backfills historical data going back weeks
 - **Basin Fullness Sensor** - New sensor showing how full the sump basin is (0-100%)
   - 100% = basin full (pump about to start)
   - 0% = basin empty (pump just finished)
@@ -23,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Changed icon from `mdi:waves` to `mdi:arrow-expand-vertical`
   - Unique ID changed from `_water_level` to `_water_distance` (may show as new entity)
   - Added pump threshold attributes: pump_on_distance, pump_off_distance
+- **Total Volume → Recent Volume** - Sensor behavior improved:
+  - Renamed to "Recent Volume" to reflect actual behavior
+  - Changed from `TOTAL_INCREASING` to `MEASUREMENT` state class
+  - Now correctly shows volume from last 50 cycles only
+  - Marked as diagnostic sensor (hidden by default)
+  - No longer fluctuates incorrectly - for true cumulative totals, use statistics/Energy Dashboard
 
 ### Fixed
 - **MQTT Client Import Error** - Restored missing MQTT client code in api.py:
