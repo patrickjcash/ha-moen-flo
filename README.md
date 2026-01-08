@@ -37,6 +37,8 @@ These sensors are hidden by default and provide technical device information:
 
 ### Method 1: HACS (Recommended)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=patrickjcash&repository=ha-moen-flo&category=integration)
+
 HACS (Home Assistant Community Store) makes installation and updates easy.
 
 1. **Install HACS** (if not already installed)
@@ -44,6 +46,7 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
    - Restart Home Assistant after HACS installation
 
 2. **Add Custom Repository**
+   - Click the badge above to open HACS directly to this repository, OR
    - Open HACS in Home Assistant
    - Click the three dots menu (⋮) in the top right
    - Select "Custom repositories"
@@ -89,7 +92,9 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
 
 ## Configuration
 
-1. Navigate to **Settings** → **Devices & Services**
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=moen_flo_nab)
+
+1. Click the badge above to add the integration directly, OR navigate to **Settings** → **Devices & Services**
 2. Click the **+ Add Integration** button
 3. Search for "Moen Smart Sump Pump Monitor"
 4. Enter your Moen account email and password
