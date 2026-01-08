@@ -104,6 +104,9 @@ async def async_import_pump_statistics(
             if cycle_time.tzinfo is None:
                 cycle_time = cycle_time.replace(tzinfo=timezone.utc)
 
+            # Normalize to top of hour (minutes and seconds = 0) as required by HA statistics
+            cycle_time = cycle_time.replace(minute=0, second=0, microsecond=0)
+
             # Skip if already imported
             if last_timestamp and cycle_time <= last_timestamp:
                 continue

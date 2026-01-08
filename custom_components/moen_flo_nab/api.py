@@ -453,6 +453,30 @@ class MoenFloNABMqttClient:
             'session_token': credentials['SessionToken']
         }
 
+    def _setup_mqtt_connection(self, aws_creds: Dict[str, str]):
+        """Set up MQTT connection (blocking operation)."""
+        # Set up AWS IoT connection
+        self.event_loop_group = io.EventLoopGroup(1)
+        self.host_resolver = io.DefaultHostResolver(self.event_loop_group)
+        self.client_bootstrap = io.ClientBootstrap(
+            self.event_loop_group, self.host_resolver
+        )
+
+        # Create MQTT connection
+        self.mqtt_connection = mqtt_connection_builder.websockets_with_default_aws_signing(
+            endpoint=IOT_ENDPOINT,
+            client_bootstrap=self.client_bootstrap,
+            region=IOT_REGION,
+            credentials_provider=auth.AwsCredentialsProvider.new_static(
+                access_key_id=aws_creds['access_key'],
+                secret_access_key=aws_creds['secret_key'],
+                session_token=aws_creds['session_token']
+            ),
+            client_id=f"moen-ha-{uuid.uuid4()}",
+            clean_session=True,
+            keep_alive_secs=30
+        )
+
     async def connect(self) -> bool:
         """Establish MQTT connection to AWS IoT Core.
 
@@ -470,27 +494,8 @@ class MoenFloNABMqttClient:
             loop = asyncio.get_event_loop()
             aws_creds = await loop.run_in_executor(None, self._get_aws_credentials)
 
-            # Set up AWS IoT connection
-            self.event_loop_group = io.EventLoopGroup(1)
-            self.host_resolver = io.DefaultHostResolver(self.event_loop_group)
-            self.client_bootstrap = io.ClientBootstrap(
-                self.event_loop_group, self.host_resolver
-            )
-
-            # Create MQTT connection
-            self.mqtt_connection = mqtt_connection_builder.websockets_with_default_aws_signing(
-                endpoint=IOT_ENDPOINT,
-                client_bootstrap=self.client_bootstrap,
-                region=IOT_REGION,
-                credentials_provider=auth.AwsCredentialsProvider.new_static(
-                    access_key_id=aws_creds['access_key'],
-                    secret_access_key=aws_creds['secret_key'],
-                    session_token=aws_creds['session_token']
-                ),
-                client_id=f"moen-ha-{uuid.uuid4()}",
-                clean_session=True,
-                keep_alive_secs=30
-            )
+            # Set up MQTT connection in executor to avoid blocking
+            await loop.run_in_executor(None, self._setup_mqtt_connection, aws_creds)
 
             # Connect (run blocking operations in executor)
             connect_future = self.mqtt_connection.connect()
