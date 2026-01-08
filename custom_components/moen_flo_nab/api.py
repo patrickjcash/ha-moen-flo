@@ -3,8 +3,18 @@ import aiohttp
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Callable
+
+try:
+    import boto3
+    from awsiot import mqtt_connection_builder
+    from awscrt import mqtt, io, auth
+    MQTT_AVAILABLE = True
+except ImportError:
+    MQTT_AVAILABLE = False
+    _LOGGER.warning("MQTT libraries not available, using REST API only")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +27,12 @@ INVOKER_URL = "https://exo9f857n8.execute-api.us-east-2.amazonaws.com/prod/v1/in
 CLIENT_ID = "6qn9pep31dglq6ed4fvlq6rp5t"
 
 USER_AGENT = "Smartwater-iOS-prod-3.39.0"
+
+# AWS IoT Constants (extracted from Moen mobile app)
+IOT_ENDPOINT = "a1r2q5ic87novc-ats.iot.us-east-2.amazonaws.com"
+IOT_REGION = "us-east-2"
+IDENTITY_POOL_ID = "us-east-2:7880fbef-a3a8-4ffc-a0d1-74e686e79c80"
+USER_POOL_ID = "us-east-2_9puIPVyv1"
 
 
 class MoenFloNABApiError(Exception):
@@ -38,6 +54,7 @@ class MoenFloNABClient:
         self.password = password
         self.session = session
         self._access_token: Optional[str] = None
+        self._id_token: Optional[str] = None
         self._token_expiry: Optional[datetime] = None
         self._cognito_identity_id: Optional[str] = None
 
@@ -71,7 +88,8 @@ class MoenFloNABClient:
 
                 result = data["token"]
                 self._access_token = result.get("access_token")
-                
+                self._id_token = result.get("id_token")  # Store for MQTT
+
                 # Set token expiry (typically 1 hour)
                 expires_in = result.get("expires_in", 3600)
                 self._token_expiry = datetime.now() + timedelta(seconds=expires_in - 300)
@@ -360,3 +378,263 @@ class MoenFloNABClient:
         )
 
         return response if isinstance(response, dict) else {}
+
+    def create_mqtt_client(self, client_id: int) -> Optional['MoenFloNABMqttClient']:
+        """Create an MQTT client for real-time device data.
+
+        Args:
+            client_id: Numeric device client ID
+
+        Returns:
+            MoenFloNABMqttClient instance or None if ID token not available
+        """
+        if not self._id_token:
+            _LOGGER.error("No ID token available, authenticate first")
+            return None
+
+        if not MQTT_AVAILABLE:
+            _LOGGER.warning("MQTT libraries not available")
+            return None
+
+        return MoenFloNABMqttClient(client_id, self._id_token)
+
+
+class MoenFloNABMqttClient:
+    """MQTT client for real-time Moen Flo NAB device data.
+
+    This client maintains a persistent MQTT connection to AWS IoT Core
+    and provides real-time sensor data updates. It uses adaptive polling:
+    - Normal: Update every 5 minutes
+    - Alert: Update every 30-60 seconds
+    - Critical: Continuous streaming (~90 readings/minute)
+    """
+
+    def __init__(self, client_id: int, id_token: str):
+        """Initialize MQTT client.
+
+        Args:
+            client_id: Numeric device client ID
+            id_token: Cognito ID token from authentication
+        """
+        self.client_id = client_id
+        self.id_token = id_token
+        self.mqtt_connection = None
+        self.event_loop_group = None
+        self.host_resolver = None
+        self.client_bootstrap = None
+        self._shadow_callbacks: List[Callable[[Dict[str, Any]], None]] = []
+        self._connected = False
+        self._last_shadow_data: Optional[Dict[str, Any]] = None
+
+    def _get_aws_credentials(self) -> Dict[str, str]:
+        """Get temporary AWS credentials from Cognito using ID token."""
+        if not MQTT_AVAILABLE:
+            raise MoenFloNABApiError("MQTT libraries not available")
+
+        cognito_identity = boto3.client('cognito-identity', region_name=IOT_REGION)
+        provider_name = f"cognito-idp.{IOT_REGION}.amazonaws.com/{USER_POOL_ID}"
+
+        # Exchange ID token for Cognito identity
+        identity_response = cognito_identity.get_id(
+            IdentityPoolId=IDENTITY_POOL_ID,
+            Logins={provider_name: self.id_token}
+        )
+
+        # Get temporary AWS credentials
+        credentials_response = cognito_identity.get_credentials_for_identity(
+            IdentityId=identity_response['IdentityId'],
+            Logins={provider_name: self.id_token}
+        )
+
+        credentials = credentials_response['Credentials']
+        return {
+            'access_key': credentials['AccessKeyId'],
+            'secret_key': credentials['SecretKey'],
+            'session_token': credentials['SessionToken']
+        }
+
+    async def connect(self) -> bool:
+        """Establish MQTT connection to AWS IoT Core.
+
+        Returns:
+            True if connection successful
+        """
+        if not MQTT_AVAILABLE:
+            _LOGGER.warning("MQTT not available, cannot connect")
+            return False
+
+        try:
+            _LOGGER.info(f"Connecting to AWS IoT MQTT for device {self.client_id}")
+
+            # Get AWS credentials
+            aws_creds = self._get_aws_credentials()
+
+            # Set up AWS IoT connection
+            self.event_loop_group = io.EventLoopGroup(1)
+            self.host_resolver = io.DefaultHostResolver(self.event_loop_group)
+            self.client_bootstrap = io.ClientBootstrap(
+                self.event_loop_group, self.host_resolver
+            )
+
+            # Create MQTT connection
+            self.mqtt_connection = mqtt_connection_builder.websockets_with_default_aws_signing(
+                endpoint=IOT_ENDPOINT,
+                client_bootstrap=self.client_bootstrap,
+                region=IOT_REGION,
+                credentials_provider=auth.AwsCredentialsProvider.new_static(
+                    access_key_id=aws_creds['access_key'],
+                    secret_access_key=aws_creds['secret_key'],
+                    session_token=aws_creds['session_token']
+                ),
+                client_id=f"moen-ha-{uuid.uuid4()}",
+                clean_session=True,
+                keep_alive_secs=30
+            )
+
+            # Connect
+            connect_future = self.mqtt_connection.connect()
+            connect_future.result()
+
+            # Subscribe to shadow topics
+            get_accepted_topic = f"$aws/things/{self.client_id}/shadow/get/accepted"
+            update_accepted_topic = f"$aws/things/{self.client_id}/shadow/update/accepted"
+
+            subscribe_future, _ = self.mqtt_connection.subscribe(
+                topic=get_accepted_topic,
+                qos=mqtt.QoS.AT_LEAST_ONCE,
+                callback=self._on_shadow_message
+            )
+            subscribe_future.result()
+
+            subscribe_future2, _ = self.mqtt_connection.subscribe(
+                topic=update_accepted_topic,
+                qos=mqtt.QoS.AT_LEAST_ONCE,
+                callback=self._on_shadow_message
+            )
+            subscribe_future2.result()
+
+            self._connected = True
+            _LOGGER.info(f"Successfully connected to AWS IoT MQTT for device {self.client_id}")
+            return True
+
+        except Exception as err:
+            _LOGGER.error(f"Failed to connect to MQTT: {err}")
+            self._connected = False
+            return False
+
+    def _on_shadow_message(self, topic, payload, dup, qos, retain, **kwargs):
+        """Handle incoming MQTT shadow messages."""
+        try:
+            data = json.loads(payload)
+            if "state" in data:
+                reported = data.get("state", {}).get("reported", {})
+                self._last_shadow_data = reported
+
+                # Call all registered callbacks
+                for callback in self._shadow_callbacks:
+                    try:
+                        callback(reported)
+                    except Exception as err:
+                        _LOGGER.error(f"Error in shadow callback: {err}")
+
+        except Exception as err:
+            _LOGGER.error(f"Error parsing shadow message: {err}")
+
+    def register_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Register a callback to be called when shadow data is received.
+
+        Args:
+            callback: Function to call with shadow data dict
+        """
+        if callback not in self._shadow_callbacks:
+            self._shadow_callbacks.append(callback)
+
+    def unregister_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Unregister a shadow data callback."""
+        if callback in self._shadow_callbacks:
+            self._shadow_callbacks.remove(callback)
+
+    async def trigger_sensor_update(self, command: str = "sens_on") -> bool:
+        """Trigger device to take fresh sensor readings via MQTT.
+
+        Sends a shadow update command to tell the device to take measurements.
+        The device will then push updated readings via the subscribed topics.
+
+        Args:
+            command: Shadow command (default: "sens_on")
+
+        Returns:
+            True if command sent successfully
+        """
+        if not self._connected or not self.mqtt_connection:
+            _LOGGER.warning("MQTT not connected, cannot trigger sensor update")
+            return False
+
+        try:
+            update_topic = f"$aws/things/{self.client_id}/shadow/update"
+            payload = {
+                "state": {
+                    "desired": {
+                        "crockCommand": command
+                    }
+                }
+            }
+
+            publish_future, _ = self.mqtt_connection.publish(
+                topic=update_topic,
+                payload=json.dumps(payload),
+                qos=mqtt.QoS.AT_LEAST_ONCE
+            )
+            publish_future.result()
+
+            _LOGGER.debug(f"Triggered sensor update with command: {command}")
+            return True
+
+        except Exception as err:
+            _LOGGER.error(f"Failed to trigger sensor update: {err}")
+            return False
+
+    async def request_shadow(self) -> bool:
+        """Request current shadow state via MQTT.
+
+        Returns:
+            True if request sent successfully
+        """
+        if not self._connected or not self.mqtt_connection:
+            return False
+
+        try:
+            get_topic = f"$aws/things/{self.client_id}/shadow/get"
+            publish_future, _ = self.mqtt_connection.publish(
+                topic=get_topic,
+                payload="",
+                qos=mqtt.QoS.AT_LEAST_ONCE
+            )
+            publish_future.result()
+            return True
+
+        except Exception as err:
+            _LOGGER.error(f"Failed to request shadow: {err}")
+            return False
+
+    @property
+    def last_shadow_data(self) -> Optional[Dict[str, Any]]:
+        """Get the last received shadow data."""
+        return self._last_shadow_data
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if MQTT connection is active."""
+        return self._connected
+
+    async def disconnect(self):
+        """Disconnect from MQTT."""
+        if self.mqtt_connection and self._connected:
+            try:
+                disconnect_future = self.mqtt_connection.disconnect()
+                disconnect_future.result()
+                _LOGGER.info(f"Disconnected from MQTT for device {self.client_id}")
+            except Exception as err:
+                _LOGGER.error(f"Error disconnecting from MQTT: {err}")
+            finally:
+                self._connected = False
