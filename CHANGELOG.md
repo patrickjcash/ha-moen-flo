@@ -5,6 +5,28 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-01-08
+
+### Fixed
+- **Hassfest Validation** - Added `recorder` to manifest dependencies
+  - Required for long-term statistics functionality
+  - Fixes integration validation error
+- **Statistics ID Bug** - Fixed invalid statistic_id format
+  - Device UUIDs with hyphens caused "Invalid statistic_id" error
+  - Now converts hyphens to underscores in statistic IDs
+  - Statistics will now import correctly on integration reload
+- **MQTT Blocking Calls** - Fixed "blocking call to putrequest" errors
+  - boto3 and AWS IoT SDK calls now run in executor threads
+  - Prevents blocking Home Assistant's event loop
+  - MQTT connections should now succeed reliably
+  - Enables live water level readings from device ToF sensor
+
+### Removed
+- **Recent Volume Sensor** - Removed deprecated sensor entirely
+  - Long-term statistics provide proper historical tracking
+  - Use statistics entity or History/Statistics Graph cards for pump volume data
+  - Sensor was replaced by statistics in v1.8.0
+
 ## [1.8.0] - 2026-01-08
 
 ### Added

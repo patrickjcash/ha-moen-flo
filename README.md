@@ -54,6 +54,7 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
   - Enables daily/weekly/monthly graphs
   - View in Energy Dashboard under "Water" category
   - Backfills weeks of historical data on first load
+  - **See [Viewing Pump Volume Statistics](#viewing-pump-volume-statistics) below for access instructions**
 
 ### Binary Sensors
 - **Flood Risk** - Alerts when water level reaches critical thresholds
@@ -246,6 +247,48 @@ These sensors are useful for:
 - Tracking battery health and remaining backup power
 - Viewing active device alerts and system status
 - Troubleshooting connection issues
+
+### Viewing Pump Volume Statistics
+
+The integration automatically imports pump volume history as **long-term statistics**, which enables historical tracking and graphing. Statistics are stored separately from sensors and accessed differently:
+
+#### Where to Find Statistics:
+
+**Option 1: Energy Dashboard (Recommended)**
+1. Navigate to **Settings** → **Dashboards** → **Energy**
+2. Click **Add Consumption** in the Water section
+3. Select the statistic for your device (e.g., `Sump Pump Water Volume`)
+4. View daily, weekly, monthly, or yearly pump usage
+
+**Option 2: History Panel**
+1. Navigate to **History** (sidebar or `/history`)
+2. Click the entity selection dropdown
+3. Search for your device name (e.g., "Sump Pump")
+4. Select the **statistic** (not sensor) - it will have a chart icon
+5. Adjust time range to view historical data
+
+**Option 3: Statistics Graph Card**
+Add a Statistics Graph card to any dashboard:
+```yaml
+type: statistics-graph
+entities:
+  - sensor.sump_pump_water_volume
+stat_types:
+  - sum
+period: day
+```
+
+**Option 4: Developer Tools**
+1. Navigate to **Developer Tools** → **Statistics**
+2. Search for your device name or "pump_volume"
+3. View raw statistics data and metadata
+
+#### Important Notes:
+- **Statistics ≠ Sensors**: Statistics are stored in Home Assistant's long-term recorder database, separate from sensor entities
+- **Search by Device Name**: Look for your device name (e.g., "Sump Pump Water Volume"), not "pump_volume"
+- **Reload Integration**: After first installation, reload the integration to trigger statistics import
+- **Historical Data**: The integration automatically backfills weeks of historical pump cycles on first load
+- **Incremental Updates**: New pump cycles are automatically added to statistics during each update
 
 ### Automations
 

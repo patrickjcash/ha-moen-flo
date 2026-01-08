@@ -78,7 +78,7 @@ class MoenFloNABBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, self.device_duid)},
             "name": self.device_name,
             "manufacturer": "Moen",
-            "model": "Flo NAB Sump Pump Monitor",
+            "model": "Moen Smart Sump Pump Monitor",
             "sw_version": info.get("firmwareVersion"),
         }
 

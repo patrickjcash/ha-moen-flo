@@ -47,7 +47,10 @@ async def async_import_pump_statistics(
         _LOGGER.debug("No pump cycles to import for device %s", device_duid)
         return 0
 
-    statistic_id = f"{DOMAIN}:{device_duid}_pump_volume"
+    # Statistics ID format: domain:object_id (no special chars in object_id)
+    # Replace hyphens in UUID with underscores for valid statistic_id
+    safe_duid = device_duid.replace("-", "_")
+    statistic_id = f"{DOMAIN}:{safe_duid}_pump_volume"
 
     # Define metadata
     metadata = StatisticMetaData(

@@ -466,8 +466,9 @@ class MoenFloNABMqttClient:
         try:
             _LOGGER.info(f"Connecting to AWS IoT MQTT for device {self.client_id}")
 
-            # Get AWS credentials
-            aws_creds = self._get_aws_credentials()
+            # Get AWS credentials in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            aws_creds = await loop.run_in_executor(None, self._get_aws_credentials)
 
             # Set up AWS IoT connection
             self.event_loop_group = io.EventLoopGroup(1)
@@ -491,9 +492,9 @@ class MoenFloNABMqttClient:
                 keep_alive_secs=30
             )
 
-            # Connect
+            # Connect (run blocking operations in executor)
             connect_future = self.mqtt_connection.connect()
-            connect_future.result()
+            await loop.run_in_executor(None, connect_future.result)
 
             # Subscribe to shadow topics
             get_accepted_topic = f"$aws/things/{self.client_id}/shadow/get/accepted"
@@ -504,14 +505,14 @@ class MoenFloNABMqttClient:
                 qos=mqtt.QoS.AT_LEAST_ONCE,
                 callback=self._on_shadow_message
             )
-            subscribe_future.result()
+            await loop.run_in_executor(None, subscribe_future.result)
 
             subscribe_future2, _ = self.mqtt_connection.subscribe(
                 topic=update_accepted_topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
                 callback=self._on_shadow_message
             )
-            subscribe_future2.result()
+            await loop.run_in_executor(None, subscribe_future2.result)
 
             self._connected = True
             _LOGGER.info(f"Successfully connected to AWS IoT MQTT for device {self.client_id}")
@@ -585,7 +586,8 @@ class MoenFloNABMqttClient:
                 payload=json.dumps(payload),
                 qos=mqtt.QoS.AT_LEAST_ONCE
             )
-            publish_future.result()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, publish_future.result)
 
             _LOGGER.debug(f"Triggered sensor update with command: {command}")
             return True
@@ -610,7 +612,8 @@ class MoenFloNABMqttClient:
                 payload="",
                 qos=mqtt.QoS.AT_LEAST_ONCE
             )
-            publish_future.result()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, publish_future.result)
             return True
 
         except Exception as err:
@@ -632,7 +635,8 @@ class MoenFloNABMqttClient:
         if self.mqtt_connection and self._connected:
             try:
                 disconnect_future = self.mqtt_connection.disconnect()
-                disconnect_future.result()
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, disconnect_future.result)
                 _LOGGER.info(f"Disconnected from MQTT for device {self.client_id}")
             except Exception as err:
                 _LOGGER.error(f"Error disconnecting from MQTT: {err}")
