@@ -1,5 +1,7 @@
 # Moen Smart Sump Pump Monitor - Home Assistant Integration
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+
 A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model S2000ESUSA), providing real-time monitoring of water levels, temperature, humidity, pump health, and system status.
 
 > **Note:** This device was previously branded as "Moen Flo Smart Sump Pump Monitor". The product line has been rebranded to simply "Moen Smart Sump Pump Monitor".
@@ -37,16 +39,15 @@ These sensors are hidden by default and provide technical device information:
 
 ### Method 1: HACS (Recommended)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=patrickjcash&repository=ha-moen-flo&category=integration)
-
 HACS (Home Assistant Community Store) makes installation and updates easy.
+
+> **Note:** This integration is not yet published in the HACS default repository. You need to add it as a **custom repository** first.
 
 1. **Install HACS** (if not already installed)
    - Follow the official HACS installation guide: https://hacs.xyz/docs/setup/download
    - Restart Home Assistant after HACS installation
 
 2. **Add Custom Repository**
-   - Click the badge above to open HACS directly to this repository, OR
    - Open HACS in Home Assistant
    - Click the three dots menu (⋮) in the top right
    - Select "Custom repositories"
