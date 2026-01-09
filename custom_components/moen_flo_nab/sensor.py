@@ -236,7 +236,7 @@ class MoenFloNABBasinFullnessSensor(MoenFloNABSensorBase):
             "current_distance_mm": info.get("crockTofDistance"),
             "pump_on_distance_mm": pump_thresholds.get("pump_on_distance"),
             "pump_off_distance_mm": pump_thresholds.get("pump_off_distance"),
-            "calibration_cycles": pump_thresholds.get("calibration_cycles", 0),
+            "observation_count": pump_thresholds.get("observation_count", 0),
         }
 
         return {k: v for k, v in attrs.items() if v is not None}

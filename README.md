@@ -13,22 +13,35 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v1.8.0
+## What's New in v1.9.0
 
-📊 **Long-Term Statistics & Energy Dashboard** - The integration now imports pump volume history as long-term statistics, enabling proper historical tracking and Energy Dashboard integration!
+🎯 **Separate Primary & Backup Pump Tracking** - Statistics now differentiate between primary and backup pump volumes!
 
 Key features:
-- Automatic import of all pump cycles (weeks of historical data)
-- Works with Home Assistant Energy Dashboard
-- Create custom graphs showing daily, weekly, monthly pump usage
-- Per-cycle granularity with accurate timestamps
-- Incremental updates - only new cycles imported after initial setup
+- **Three separate statistics**: Total, Primary, and Backup pump volumes
+- Track primary pump performance independently from backup pump usage
+- Identify when backup pump is running more frequently
+- Better insights for pump maintenance planning
 
-Plus improvements from v1.7.x:
-- Water Distance sensor (renamed from Water Level for clarity)
-- Basin Fullness sensor (future enhancement - currently unavailable)
-- Battery preservation with `updates_off` command
-- Fixed Total Volume sensor behavior (now "Recent Volume")
+✨ **Smart Basin Fullness Calculation** - No more hardcoded values!
+
+- Learns your basin's behavior from observed water distance readings
+- Adapts to any basin size and configuration automatically
+- Shows 0-100% fullness based on actual min/max observed distances
+- Requires just 5 readings to start providing data
+
+🏷️ **Improved Integration Naming** - Cleaner UI throughout Home Assistant
+
+- Integration now consistently labeled "Moen Smart Sump Pump Monitor"
+- Statistics properly named (e.g., "Sump Pump Total Pump Volume")
+- No more "moen_flo_nab" prefix in statistic names
+
+Plus all the features from v1.8.x:
+- Long-term statistics with Energy Dashboard integration
+- Historical data backfill (weeks of pump cycles)
+- Per-cycle granularity with accurate timestamps
+- Water Distance sensor with detailed attributes
+- Comprehensive alert monitoring
 
 See the [CHANGELOG](CHANGELOG.md) for complete details.
 
@@ -42,7 +55,9 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 - **Basin Fullness** - Percentage showing how full the sump basin is (0-100%)
   - 100% = basin full (pump about to start)
   - 0% = basin empty (pump just finished)
-  - **Note:** Currently unavailable - requires threshold learning (future enhancement)
+  - Automatically learns your basin's min/max distances from observed readings
+  - Requires minimum 5 water distance readings to begin showing values
+  - Attributes include current distance, pump on/off distances, and observation count
 - **Temperature** - Ambient temperature in the sump pit (°F)
 - **Humidity** - Relative humidity in the sump pit (%)
 - **Daily Pump Capacity** - Percentage of daily pump capacity used
@@ -50,6 +65,8 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 
 ### Long-Term Statistics
 - **Pump Volume Statistics** - Automatically imported for Energy Dashboard integration
+  - **Three separate statistics**: Total Pump Volume, Primary Pump Volume, Backup Pump Volume
+  - Track primary and backup pump usage independently
   - Historical pump volume with per-cycle granularity
   - Enables daily/weekly/monthly graphs
   - View in Energy Dashboard under "Water" category
@@ -151,7 +168,7 @@ After setup, verify all entities are created:
 
 **Sensors:**
 - `sensor.sump_pump_water_distance`
-- `sensor.sump_pump_basin_fullness` (currently unavailable until threshold learning implemented)
+- `sensor.sump_pump_basin_fullness`
 - `sensor.sump_pump_temperature`
 - `sensor.sump_pump_humidity`
 - `sensor.sump_pump_daily_pump_capacity`
@@ -250,15 +267,21 @@ These sensors are useful for:
 
 ### Viewing Pump Volume Statistics
 
-The integration automatically imports pump volume history as **long-term statistics**, which enables historical tracking and graphing. Statistics are stored separately from sensors and accessed differently:
+The integration automatically imports pump volume history as **long-term statistics**, which enables historical tracking and graphing. Statistics are stored separately from sensors and accessed differently.
+
+**Three separate statistics are available:**
+- **Total Pump Volume** - All pump cycles combined
+- **Primary Pump Volume** - Only cycles where primary pump ran alone
+- **Backup Pump Volume** - Only cycles where backup pump engaged
 
 #### Where to Find Statistics:
 
 **Option 1: Energy Dashboard (Recommended)**
 1. Navigate to **Settings** → **Dashboards** → **Energy**
 2. Click **Add Consumption** in the Water section
-3. Select the statistic for your device (e.g., `Sump Pump Water Volume`)
+3. Select the statistic(s) for your device (e.g., `Sump Pump Total Pump Volume`, `Sump Pump Primary Pump Volume`, `Sump Pump Backup Pump Volume`)
 4. View daily, weekly, monthly, or yearly pump usage
+5. Compare primary vs backup pump activity over time
 
 **Option 2: History Panel**
 1. Navigate to **History** (sidebar or `/history`)

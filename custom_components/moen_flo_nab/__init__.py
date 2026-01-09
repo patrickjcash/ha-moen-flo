@@ -82,6 +82,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self.mqtt_clients = {}  # Store MQTT clients per device
         self._last_alert_state = {}  # Track alert states for adaptive polling
         self._first_refresh = True  # Track if this is the first data fetch
+        self._water_distance_history = {}  # Track water distance readings per device
 
     async def _async_update_data(self):
         """Fetch data from API."""
@@ -160,6 +161,16 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                             device_data["info"]["alerts"] = reported.get(
                                 "alerts", device_data["info"].get("alerts")
                             )
+                            # Track water distance for threshold calculation
+                            distance = reported.get("crockTofDistance")
+                            if distance is not None:
+                                if device_duid not in self._water_distance_history:
+                                    self._water_distance_history[device_duid] = []
+                                self._water_distance_history[device_duid].append(distance)
+                                # Keep last 100 readings
+                                if len(self._water_distance_history[device_duid]) > 100:
+                                    self._water_distance_history[device_duid].pop(0)
+
                             _LOGGER.debug(
                                 "Updated device %s with MQTT shadow data (water level: %s mm)",
                                 device_duid,
@@ -225,8 +236,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     cycles = await self.client.get_pump_cycles(client_id, limit=limit)
                     device_data["pump_cycles"] = cycles
 
-                    # Calculate pump thresholds from cycle history
-                    device_data["pump_thresholds"] = self._calculate_pump_thresholds(cycles)
+                    # Calculate pump thresholds from water distance history
+                    device_data["pump_thresholds"] = self._calculate_pump_thresholds(device_duid)
 
                     # Import statistics on first refresh or when we have new cycles
                     if cycles and (self._first_refresh or len(cycles) > 0):
@@ -312,78 +323,50 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
             self._last_alert_state[device_duid] = current_state
 
-    def _calculate_pump_thresholds(self, pump_cycles: list) -> dict:
-        """Calculate pump on/off distance thresholds from pump cycle history.
+    def _calculate_pump_thresholds(self, device_duid: str) -> dict:
+        """Calculate pump on/off distance thresholds from observed water distances.
 
-        Analyzes recent pump cycles to determine:
-        - pump_on_distance: Distance when pump starts (basin full) - estimated from basin diameter
-        - pump_off_distance: Distance when pump stops (basin empty) - estimated from basin diameter + volume
-
-        SIMPLE HEURISTIC APPROACH:
-        Since pump cycle data doesn't include ToF distance readings, we use a simple geometric
-        calculation based on basin diameter and pump volumes:
-
-        1. Typical sump basin is 18" (457mm) diameter cylinder
-        2. pump_on_distance: When basin is nearly full (estimated at ~50mm from sensor)
-        3. pump_off_distance: Calculated from volume pumped out + basin geometry
-
-        Formula: height_change (mm) = volume (gallons) * 3785.41 / (π * (diameter/2)^2)
+        SIMPLE APPROACH:
+        Uses the min and max observed water distances from recent readings:
+        - pump_on_distance: Minimum observed distance (basin full, pump about to start)
+        - pump_off_distance: Maximum observed distance (basin empty, pump just finished)
+        - Basin Fullness: 100% at pump_on, 0% at pump_off, linear interpolation between
 
         Args:
-            pump_cycles: List of pump cycle dictionaries from API
+            device_duid: Device UUID
 
         Returns:
-            Dictionary with pump_on_distance, pump_off_distance, and calibration_cycles
+            Dictionary with pump_on_distance, pump_off_distance, and observation count
         """
-        if not pump_cycles or len(pump_cycles) == 0:
+        history = self._water_distance_history.get(device_duid, [])
+
+        if not history or len(history) < 5:
+            _LOGGER.debug("Insufficient water distance readings for device %s (%d readings)",
+                         device_duid, len(history))
             return {}
 
-        # Get average pump volume from recent cycles
-        recent_cycles = pump_cycles[:10]  # Last 10 cycles
-        volumes = [c.get("emptyVolume", 0) for c in recent_cycles if c.get("emptyVolume", 0) > 0]
+        # Simple: min distance = basin full (pump on), max distance = basin empty (pump off)
+        pump_on_distance = min(history)
+        pump_off_distance = max(history)
 
-        if not volumes:
-            _LOGGER.debug("No valid pump volumes found in cycle data")
+        # Need meaningful difference between min and max
+        if pump_off_distance - pump_on_distance < 10:  # Less than 10mm difference
+            _LOGGER.debug("Water distance range too small for device %s (%.1f mm)",
+                         device_duid, pump_off_distance - pump_on_distance)
             return {}
-
-        avg_volume_gallons = sum(volumes) / len(volumes)
-
-        # Typical sump basin diameter: 18 inches = 457mm
-        # This is a reasonable assumption for most residential sump pits
-        basin_diameter_mm = 457
-        basin_radius_mm = basin_diameter_mm / 2
-
-        # Calculate basin cross-sectional area in mm²
-        import math
-        basin_area_mm2 = math.pi * (basin_radius_mm ** 2)
-
-        # Convert volume from gallons to mm³
-        volume_mm3 = avg_volume_gallons * 3785410  # 1 gallon = 3,785,410 mm³
-
-        # Calculate height change in mm
-        height_change_mm = volume_mm3 / basin_area_mm2
-
-        # Assume pump starts when water is ~50mm from sensor (basin nearly full)
-        # This is a typical distance for sump pumps to activate
-        pump_on_distance = 50
-
-        # pump_off_distance is when basin is empty after pumping out water
-        pump_off_distance = pump_on_distance + height_change_mm
 
         _LOGGER.debug(
-            "Calculated pump thresholds: ON=%d mm, OFF=%d mm (avg volume=%.1f gal, height change=%.1f mm)",
+            "Calculated pump thresholds for %s: ON=%d mm (min), OFF=%d mm (max) from %d readings",
+            device_duid,
             pump_on_distance,
             pump_off_distance,
-            avg_volume_gallons,
-            height_change_mm,
+            len(history),
         )
 
         return {
             "pump_on_distance": int(pump_on_distance),
             "pump_off_distance": int(pump_off_distance),
-            "calibration_cycles": len(recent_cycles),
-            "avg_cycle_volume_gallons": round(avg_volume_gallons, 1),
-            "calculated_height_change_mm": round(height_change_mm, 1),
+            "observation_count": len(history),
         }
 
     async def disconnect_mqtt(self):
