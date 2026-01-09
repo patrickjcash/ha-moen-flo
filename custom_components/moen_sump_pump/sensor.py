@@ -1,7 +1,7 @@
 """Sensor platform for Moen Flo NAB."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import logging
 from typing import Any
 
@@ -778,18 +778,19 @@ class MoenFloNABPrimaryPumpInstallDateSensor(MoenFloNABSensorBase):
         self._attr_name = f"{device_name} Primary Pump Install Date"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> date | None:
         """Return the primary pump install date."""
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         main_pump = pump_info.get("main", {})
-        install_date = main_pump.get("installDate")
-        if install_date:
+        install_date_str = main_pump.get("installDate")
+        if install_date_str:
             try:
-                # Extract just the date portion from ISO timestamp
-                # Format: "2010-12-31T08:54:53.000Z" → "2010-12-31"
-                return install_date.split("T")[0]
-            except (AttributeError, IndexError):
+                # Parse ISO timestamp and extract date
+                # Format: "2010-12-31T08:54:53.000Z" → date(2010, 12, 31)
+                dt = datetime.fromisoformat(install_date_str.replace("Z", "+00:00"))
+                return dt.date()
+            except (ValueError, AttributeError):
                 pass
         return None
 
@@ -908,17 +909,18 @@ class MoenFloNABBackupPumpInstallDateSensor(MoenFloNABSensorBase):
         self._attr_name = f"{device_name} Backup Pump Install Date"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> date | None:
         """Return the backup pump install date."""
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         backup_pump = pump_info.get("backup", {})
-        install_date = backup_pump.get("installDate")
-        if install_date:
+        install_date_str = backup_pump.get("installDate")
+        if install_date_str:
             try:
-                # Extract just the date portion from ISO timestamp
-                return install_date.split("T")[0]
-            except (AttributeError, IndexError):
+                # Parse ISO timestamp and extract date
+                dt = datetime.fromisoformat(install_date_str.replace("Z", "+00:00"))
+                return dt.date()
+            except (ValueError, AttributeError):
                 pass
         return None
 

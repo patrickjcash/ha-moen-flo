@@ -97,11 +97,11 @@ async def _import_stat_type(
     metadata = StatisticMetaData(
         has_mean=False,
         has_sum=True,
-        mean_type=None,
         name=stat_name,
         source=DOMAIN,
         statistic_id=statistic_id,
         unit_of_measurement=UnitOfVolume.GALLONS,
+        unit_class="volume",
     )
 
     # Get last imported statistic to avoid duplicates
