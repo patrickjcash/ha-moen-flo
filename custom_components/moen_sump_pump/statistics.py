@@ -137,14 +137,36 @@ async def _import_stat_type(
     for cycle in reversed(cycles):
         try:
             # Parse cycle timestamp
-            date_str = cycle.get("date", "")
-            if not date_str:
+            date_value = cycle.get("date")
+            if not date_value:
                 continue
 
-            # Parse ISO timestamp and ensure UTC
-            cycle_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            if cycle_time.tzinfo is None:
-                cycle_time = cycle_time.replace(tzinfo=timezone.utc)
+            # Handle different date formats from API
+            if isinstance(date_value, datetime):
+                # Already a datetime object
+                cycle_time = date_value
+                if cycle_time.tzinfo is None:
+                    cycle_time = cycle_time.replace(tzinfo=timezone.utc)
+            elif isinstance(date_value, (int, float)):
+                # Unix timestamp (seconds or milliseconds)
+                timestamp = date_value
+                # Check if milliseconds (timestamp > year 3000 in seconds)
+                if timestamp > 32503680000:
+                    timestamp = timestamp / 1000
+                cycle_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            elif isinstance(date_value, str):
+                # Parse ISO timestamp string and ensure UTC
+                cycle_time = datetime.fromisoformat(date_value.replace("Z", "+00:00"))
+                if cycle_time.tzinfo is None:
+                    cycle_time = cycle_time.replace(tzinfo=timezone.utc)
+            else:
+                _LOGGER.warning(
+                    "Unexpected date type for device %s: %s (type: %s)",
+                    device_duid,
+                    date_value,
+                    type(date_value).__name__,
+                )
+                continue
 
             # Normalize to top of hour (minutes and seconds = 0) as required by HA statistics
             cycle_time = cycle_time.replace(minute=0, second=0, microsecond=0)
