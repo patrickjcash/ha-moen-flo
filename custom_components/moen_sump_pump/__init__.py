@@ -177,7 +177,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                                 reported.get("crockTofDistance"),
                             )
                         else:
-                            _LOGGER.warning("No shadow data received from MQTT for device %s", device_duid)
+                            _LOGGER.debug("No shadow data received from MQTT for device %s, using REST fallback", device_duid)
                     else:
                         # REST fallback
                         _LOGGER.debug("Using REST API fallback for device %s", device_duid)
