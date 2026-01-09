@@ -20,7 +20,7 @@ DEVICE_CLASS_WATER_LEVEL = "distance"
 # Alert Code Mappings (from decompiled Moen app strings.xml)
 # These are the common NAB (Sump Pump Monitor) alert codes
 ALERT_CODES = {
-    "218": "Alert 218",  # Unknown alert type - needs description
+    "218": "Backup Test Scheduled",  # Backup pump test scheduled
     "250": "Water Detected",  # Critical - Remote sensing cable detected water
     "252": "Water Was Detected",  # Warning - Water no longer detected
     "254": "Critical Flood Risk",  # Critical flood level
