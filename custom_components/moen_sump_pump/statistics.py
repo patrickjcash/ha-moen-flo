@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMetaData,
+    StatisticMeanType,
+)
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
@@ -97,6 +101,7 @@ async def _import_stat_type(
     metadata = StatisticMetaData(
         has_mean=False,
         has_sum=True,
+        mean_type=StatisticMeanType.NONE,  # Sum-only statistic
         name=stat_name,
         source=DOMAIN,
         statistic_id=statistic_id,
