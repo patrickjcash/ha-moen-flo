@@ -76,6 +76,18 @@ async def async_setup_entry(
         # Alert Sensor
         entities.append(MoenFloNABLastAlertSensor(coordinator, device_duid, device_name))
 
+        # Pump Configuration Diagnostic Sensors
+        entities.append(MoenFloNABPrimaryPumpManufacturerSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABPrimaryPumpModelSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABPrimaryPumpInstallDateSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBasinDiameterSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpManufacturerSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpModelSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpInstallDateSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpTestFrequencySensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpBatteryWaterSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpInstalledSensor(coordinator, device_duid, device_name))
+
     async_add_entities(entities)
 
 
@@ -409,9 +421,31 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the last cycle time from pump cycles data."""
-        cycles = self.device_data.get("pump_cycles", [])
+        """Return the last cycle time from device event logs.
 
+        Uses device logs (last_cycle) as primary source since it updates more
+        frequently than pump_cycles session data. Falls back to pump_cycles
+        if logs are unavailable.
+        """
+        # Try device logs first (most current)
+        last_event = self.device_data.get("last_cycle")
+        if last_event:
+            try:
+                # Parse ISO timestamp from event log
+                time_str = last_event.get("time", "")
+                if time_str:
+                    # Remove microseconds and Z if present
+                    time_str = time_str.split('.')[0].replace('Z', '')
+                    dt = datetime.fromisoformat(time_str)
+                    # Ensure timezone-aware datetime (assume UTC if not specified)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+            except (ValueError, TypeError, KeyError):
+                pass
+
+        # Fallback to pump cycles data
+        cycles = self.device_data.get("pump_cycles", [])
         if cycles and len(cycles) > 0:
             latest = cycles[0]
             try:
@@ -669,3 +703,293 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
             attrs["recent_inactive_alerts"] = inactive_alerts[:5]
 
         return attrs
+
+
+class MoenFloNABPrimaryPumpManufacturerSensor(MoenFloNABSensorBase):
+    """Primary pump manufacturer diagnostic sensor."""
+
+    _attr_icon = "mdi:factory"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_primary_pump_manufacturer"
+        self._attr_name = f"{device_name} Primary Pump Manufacturer"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the primary pump manufacturer."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
+        manufacturer = main_pump.get("manufacturer")
+        return manufacturer if manufacturer else None
+
+
+class MoenFloNABPrimaryPumpModelSensor(MoenFloNABSensorBase):
+    """Primary pump model number diagnostic sensor."""
+
+    _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_primary_pump_model"
+        self._attr_name = f"{device_name} Primary Pump Model"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the primary pump model number."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
+        model = main_pump.get("modelNumber")
+        return model if model else None
+
+
+class MoenFloNABPrimaryPumpInstallDateSensor(MoenFloNABSensorBase):
+    """Primary pump install date diagnostic sensor."""
+
+    _attr_device_class = SensorDeviceClass.DATE
+    _attr_icon = "mdi:calendar-check"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_primary_pump_install_date"
+        self._attr_name = f"{device_name} Primary Pump Install Date"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the primary pump install date."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
+        install_date = main_pump.get("installDate")
+        return install_date if install_date else None
+
+
+class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
+    """Basin diameter diagnostic sensor."""
+
+    _attr_icon = "mdi:diameter"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "in"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_basin_diameter"
+        self._attr_name = f"{device_name} Basin Diameter"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the basin diameter in inches."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
+        diameter = main_pump.get("crockDiameter")
+        if diameter is not None:
+            try:
+                return float(diameter)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+        return {
+            "basin_diameter_mm": info.get("crockDiameterMM"),
+        }
+
+
+class MoenFloNABBackupPumpManufacturerSensor(MoenFloNABSensorBase):
+    """Backup pump manufacturer diagnostic sensor."""
+
+    _attr_icon = "mdi:factory"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_manufacturer"
+        self._attr_name = f"{device_name} Backup Pump Manufacturer"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the backup pump manufacturer."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        manufacturer = backup_pump.get("manufacturer")
+        return manufacturer if manufacturer else None
+
+
+class MoenFloNABBackupPumpModelSensor(MoenFloNABSensorBase):
+    """Backup pump model number diagnostic sensor."""
+
+    _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_model"
+        self._attr_name = f"{device_name} Backup Pump Model"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the backup pump model number."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        model = backup_pump.get("modelNumber")
+        return model if model else None
+
+
+class MoenFloNABBackupPumpInstallDateSensor(MoenFloNABSensorBase):
+    """Backup pump install date diagnostic sensor."""
+
+    _attr_device_class = SensorDeviceClass.DATE
+    _attr_icon = "mdi:calendar-check"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_install_date"
+        self._attr_name = f"{device_name} Backup Pump Install Date"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the backup pump install date."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        install_date = backup_pump.get("installDate")
+        return install_date if install_date else None
+
+
+class MoenFloNABBackupPumpTestFrequencySensor(MoenFloNABSensorBase):
+    """Backup pump test frequency diagnostic sensor."""
+
+    _attr_icon = "mdi:calendar-clock"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_test_frequency"
+        self._attr_name = f"{device_name} Backup Pump Test Frequency"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the backup pump test frequency."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        frequency = backup_pump.get("testFrequency")
+        return frequency if frequency else None
+
+
+class MoenFloNABBackupPumpBatteryWaterSensor(MoenFloNABSensorBase):
+    """Backup pump battery requires water diagnostic sensor."""
+
+    _attr_icon = "mdi:battery-plus"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_battery_water"
+        self._attr_name = f"{device_name} Backup Pump Battery Requires Water"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return whether backup pump battery requires water."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        requires_water = backup_pump.get("batteryRequiresWater")
+        if requires_water is not None:
+            return "Yes" if requires_water else "No"
+        return None
+
+
+class MoenFloNABBackupPumpInstalledSensor(MoenFloNABSensorBase):
+    """Backup pump installed diagnostic sensor."""
+
+    _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_installed"
+        self._attr_name = f"{device_name} Backup Pump Installed"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return whether backup pump is installed."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+        installed = backup_pump.get("installed")
+        if installed is not None:
+            return "Yes" if installed else "No"
+        return None
