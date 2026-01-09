@@ -155,12 +155,14 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
             return True
 
         # Check for ANY active alerts
-        alerts = info.get("alerts", {})
-        for alert_id, alert_data in alerts.items():
-            state = alert_data.get("state", "")
-            # Alert is active if state contains "active" and NOT "inactive"
-            if "active" in state and "inactive" not in state:
-                return True
+        alerts = info.get("alerts")
+        if isinstance(alerts, dict):
+            for alert_id, alert_data in alerts.items():
+                if isinstance(alert_data, dict):
+                    state = alert_data.get("state", "")
+                    # Alert is active if state contains "active" and NOT "inactive"
+                    if "active" in state and "inactive" not in state:
+                        return True
 
         return False
 
@@ -179,10 +181,14 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
         }
         
         # Add active alert IDs
-        alerts = info.get("alerts", {})
-        active_alert_ids = [aid for aid, alert in alerts.items() if "active" in alert.get("state", "")]
-        if active_alert_ids:
-            attrs["active_alert_ids"] = active_alert_ids
+        alerts = info.get("alerts")
+        if isinstance(alerts, dict):
+            active_alert_ids = [
+                aid for aid, alert in alerts.items()
+                if isinstance(alert, dict) and "active" in alert.get("state", "")
+            ]
+            if active_alert_ids:
+                attrs["active_alert_ids"] = active_alert_ids
         
         return {k: v for k, v in attrs.items() if v is not None}
 

@@ -299,9 +299,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         Critical (high flood risk): 10 seconds
         """
         alerts = device_data.get("info", {}).get("alerts")
-        # Ensure alerts is a list, not None
-        if alerts is None:
-            alerts = []
+        # Ensure alerts is a dict, not None
+        if not isinstance(alerts, dict):
+            alerts = {}
 
         droplet = device_data.get("info", {}).get("droplet")
         flood_risk = droplet.get("floodRisk") if droplet else None
