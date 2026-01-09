@@ -97,6 +97,7 @@ async def _import_stat_type(
     metadata = StatisticMetaData(
         has_mean=False,
         has_sum=True,
+        mean_type=None,
         name=stat_name,
         source=DOMAIN,
         statistic_id=statistic_id,
@@ -151,8 +152,8 @@ async def _import_stat_type(
         )
 
     # Build statistics from cycles (API returns newest first, we process oldest first)
-    statistics = []
-    cumulative_sum = last_sum
+    # Group cycles by hour to avoid duplicate timestamps
+    hourly_volumes = {}  # {hour_timestamp: total_volume_in_hour}
 
     for cycle in reversed(cycles):
         try:
@@ -189,10 +190,10 @@ async def _import_stat_type(
                 continue
 
             # Normalize to top of hour (minutes and seconds = 0) as required by HA statistics
-            cycle_time = cycle_time.replace(minute=0, second=0, microsecond=0)
+            hour_timestamp = cycle_time.replace(minute=0, second=0, microsecond=0)
 
             # Skip if already imported
-            if last_timestamp and cycle_time <= last_timestamp:
+            if last_timestamp and hour_timestamp <= last_timestamp:
                 continue
 
             # Get volume for this cycle
@@ -215,21 +216,32 @@ async def _import_stat_type(
                 if not backup_ran:
                     continue
 
-            cumulative_sum += volume
-
-            statistics.append(
-                StatisticData(
-                    start=cycle_time,
-                    state=volume,  # This cycle's volume
-                    sum=cumulative_sum,  # Cumulative total
-                )
-            )
+            # Aggregate volume by hour
+            if hour_timestamp not in hourly_volumes:
+                hourly_volumes[hour_timestamp] = 0
+            hourly_volumes[hour_timestamp] += volume
 
         except (ValueError, TypeError) as err:
             _LOGGER.warning(
                 "Failed to parse pump cycle for device %s: %s", device_duid, err
             )
             continue
+
+    # Convert aggregated hourly volumes to statistics
+    statistics = []
+    cumulative_sum = last_sum
+
+    for hour_timestamp in sorted(hourly_volumes.keys()):
+        volume = hourly_volumes[hour_timestamp]
+        cumulative_sum += volume
+
+        statistics.append(
+            StatisticData(
+                start=hour_timestamp,
+                state=volume,  # Total volume this hour (may be multiple cycles)
+                sum=cumulative_sum,  # Cumulative total
+            )
+        )
 
     # Import statistics if we have new data
     if statistics:
