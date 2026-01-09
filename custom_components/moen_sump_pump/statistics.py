@@ -129,6 +129,9 @@ async def _import_stat_type(
             last_timestamp = datetime.fromisoformat(end_value).replace(
                 tzinfo=timezone.utc
             )
+        elif isinstance(end_value, (int, float)):
+            # Unix timestamp from database
+            last_timestamp = datetime.fromtimestamp(end_value, tz=timezone.utc)
         else:
             _LOGGER.warning(
                 "Unexpected timestamp type in last_stats for %s: %s (type: %s)",
