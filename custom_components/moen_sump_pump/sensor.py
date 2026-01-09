@@ -87,6 +87,7 @@ async def async_setup_entry(
         entities.append(MoenFloNABBackupPumpTestFrequencySensor(coordinator, device_duid, device_name))
         entities.append(MoenFloNABBackupPumpBatteryWaterSensor(coordinator, device_duid, device_name))
         entities.append(MoenFloNABBackupPumpInstalledSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABBackupPumpNextTestSensor(coordinator, device_duid, device_name))
 
     async_add_entities(entities)
 
@@ -755,7 +756,7 @@ class MoenFloNABPrimaryPumpModelSensor(MoenFloNABSensorBase):
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         main_pump = pump_info.get("main", {})
-        model = main_pump.get("modelNumber")
+        model = main_pump.get("model")
         return model if model else None
 
 
@@ -784,7 +785,14 @@ class MoenFloNABPrimaryPumpInstallDateSensor(MoenFloNABSensorBase):
         pump_info = info.get("pumpInfo", {})
         main_pump = pump_info.get("main", {})
         install_date = main_pump.get("installDate")
-        return install_date if install_date else None
+        if install_date:
+            try:
+                # Extract just the date portion from ISO timestamp
+                # Format: "2010-12-31T08:54:53.000Z" → "2010-12-31"
+                return install_date.split("T")[0]
+            except (AttributeError, IndexError):
+                pass
+        return None
 
 
 class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
@@ -878,7 +886,7 @@ class MoenFloNABBackupPumpModelSensor(MoenFloNABSensorBase):
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         backup_pump = pump_info.get("backup", {})
-        model = backup_pump.get("modelNumber")
+        model = backup_pump.get("model")
         return model if model else None
 
 
@@ -907,7 +915,13 @@ class MoenFloNABBackupPumpInstallDateSensor(MoenFloNABSensorBase):
         pump_info = info.get("pumpInfo", {})
         backup_pump = pump_info.get("backup", {})
         install_date = backup_pump.get("installDate")
-        return install_date if install_date else None
+        if install_date:
+            try:
+                # Extract just the date portion from ISO timestamp
+                return install_date.split("T")[0]
+            except (AttributeError, IndexError):
+                pass
+        return None
 
 
 class MoenFloNABBackupPumpTestFrequencySensor(MoenFloNABSensorBase):
@@ -933,7 +947,7 @@ class MoenFloNABBackupPumpTestFrequencySensor(MoenFloNABSensorBase):
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         backup_pump = pump_info.get("backup", {})
-        frequency = backup_pump.get("testFrequency")
+        frequency = backup_pump.get("pumpTestFrequency")
         return frequency if frequency else None
 
 
@@ -960,7 +974,7 @@ class MoenFloNABBackupPumpBatteryWaterSensor(MoenFloNABSensorBase):
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
         backup_pump = pump_info.get("backup", {})
-        requires_water = backup_pump.get("batteryRequiresWater")
+        requires_water = backup_pump.get("batteryNeedsWater")
         if requires_water is not None:
             return "Yes" if requires_water else "No"
         return None
@@ -988,8 +1002,77 @@ class MoenFloNABBackupPumpInstalledSensor(MoenFloNABSensorBase):
         """Return whether backup pump is installed."""
         info = self.device_data.get("info", {})
         pump_info = info.get("pumpInfo", {})
-        backup_pump = pump_info.get("backup", {})
-        installed = backup_pump.get("installed")
+        installed = pump_info.get("hasBackupPump")
         if installed is not None:
             return "Yes" if installed else "No"
         return None
+
+
+class MoenFloNABBackupPumpNextTestSensor(MoenFloNABSensorBase):
+    """Next backup pump test period diagnostic sensor."""
+
+    _attr_icon = "mdi:calendar-month"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_backup_pump_next_test"
+        self._attr_name = f"{device_name} Next Backup Test Period"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the next backup test period (month name)."""
+        info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        backup_pump = pump_info.get("backup", {})
+
+        # Get test frequency
+        frequency = backup_pump.get("pumpTestFrequency")
+        if not frequency or frequency.lower() == "never":
+            return None
+
+        # Get install date to calculate next test
+        install_date_str = backup_pump.get("installDate")
+        if not install_date_str:
+            return None
+
+        try:
+            from datetime import datetime
+            from dateutil.relativedelta import relativedelta
+
+            # Parse install date
+            install_date = datetime.fromisoformat(install_date_str.replace("Z", "+00:00"))
+            current_date = datetime.now(install_date.tzinfo)
+
+            # Calculate months between install and now
+            months_since_install = (
+                (current_date.year - install_date.year) * 12 +
+                (current_date.month - install_date.month)
+            )
+
+            # Determine interval
+            if frequency.lower() == "monthly":
+                interval_months = 1
+            elif frequency.lower() == "quarterly":
+                interval_months = 3
+            else:
+                return None
+
+            # Calculate months until next test
+            months_since_last = months_since_install % interval_months
+            months_until_next = interval_months - months_since_last if months_since_last > 0 else 0
+
+            # Calculate next test date
+            next_test_date = current_date + relativedelta(months=months_until_next)
+
+            # Return month name
+            return next_test_date.strftime("%B")
+
+        except Exception:
+            return None
