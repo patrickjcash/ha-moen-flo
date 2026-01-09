@@ -19,9 +19,9 @@ from .statistics import async_import_pump_statistics
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
-SCAN_INTERVAL = timedelta(minutes=5)
-SCAN_INTERVAL_ALERT = timedelta(seconds=30)  # Fast polling during alerts
-SCAN_INTERVAL_CRITICAL = timedelta(seconds=10)  # Very fast during critical alerts
+SCAN_INTERVAL = timedelta(minutes=5)  # Normal polling
+SCAN_INTERVAL_ACTIVE = timedelta(minutes=2)  # Active pumping
+SCAN_INTERVAL_VERY_ACTIVE = timedelta(minutes=1)  # Very active pumping
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -292,40 +292,68 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     def _update_poll_interval(self, device_duid: str, device_data: dict):
-        """Update polling interval based on device alert state.
+        """Update polling interval based on pump activity and water level changes.
 
-        Normal: 5 minutes
-        Alert (pump failures): 30 seconds
-        Critical (high flood risk): 10 seconds
+        Adaptive polling based on:
+        1. Recent pump cycles (frequent cycles = faster polling)
+        2. Water level changes (rapid changes = faster polling)
+
+        Very Active (1 min): >=3 cycles in last 15 min OR rapid water level changes
+        Active (2 min): >=1 cycle in last 15 min OR moderate water level changes
+        Normal (5 min): No recent activity
         """
-        alerts = device_data.get("info", {}).get("alerts")
-        # Ensure alerts is a dict, not None
-        if not isinstance(alerts, dict):
-            alerts = {}
+        from datetime import datetime, timezone
 
-        droplet = device_data.get("info", {}).get("droplet")
-        flood_risk = droplet.get("floodRisk") if droplet else None
+        # Get recent pump cycles
+        pump_cycles = device_data.get("pump_cycles", [])
+        now = datetime.now(timezone.utc)
 
-        # Determine alert level
-        has_critical_alert = flood_risk in ["high", "moderate"]
-        has_alert = len(alerts) > 0 or flood_risk in ["caution"]
+        # Count cycles in last 15 minutes
+        recent_cycles = 0
+        for cycle in pump_cycles:
+            try:
+                cycle_time_str = cycle.get("date", "")
+                if cycle_time_str:
+                    cycle_time = datetime.fromisoformat(cycle_time_str.replace("Z", "+00:00"))
+                    minutes_ago = (now - cycle_time).total_seconds() / 60
+                    if minutes_ago <= 15:
+                        recent_cycles += 1
+            except (ValueError, AttributeError):
+                continue
 
-        current_state = "critical" if has_critical_alert else ("alert" if has_alert else "normal")
+        # Get water level change rate
+        info = device_data.get("info", {})
+        droplet = info.get("droplet", {})
+        water_trend = droplet.get("trend", "stable")  # rising/stable/receding
+
+        # Determine activity level
+        if recent_cycles >= 3 or water_trend == "rising":
+            # Very active: pump running frequently or water rising
+            activity_level = "very_active"
+            new_interval = SCAN_INTERVAL_VERY_ACTIVE
+        elif recent_cycles >= 1:
+            # Active: some pumping activity
+            activity_level = "active"
+            new_interval = SCAN_INTERVAL_ACTIVE
+        else:
+            # Normal: no recent activity
+            activity_level = "normal"
+            new_interval = SCAN_INTERVAL
+
         previous_state = self._last_alert_state.get(device_duid, "normal")
 
         # Only update if state changed
-        if current_state != previous_state:
-            if current_state == "critical":
-                self.update_interval = SCAN_INTERVAL_CRITICAL
-                _LOGGER.info("Device %s in CRITICAL state, polling every %s seconds", device_duid, SCAN_INTERVAL_CRITICAL.seconds)
-            elif current_state == "alert":
-                self.update_interval = SCAN_INTERVAL_ALERT
-                _LOGGER.info("Device %s has alerts, polling every %s seconds", device_duid, SCAN_INTERVAL_ALERT.seconds)
-            else:
-                self.update_interval = SCAN_INTERVAL
-                _LOGGER.info("Device %s normal, polling every %s minutes", device_duid, SCAN_INTERVAL.seconds / 60)
-
-            self._last_alert_state[device_duid] = current_state
+        if activity_level != previous_state:
+            self.update_interval = new_interval
+            _LOGGER.info(
+                "Device %s activity level: %s (%d recent cycles, trend: %s), polling every %s",
+                device_duid,
+                activity_level,
+                recent_cycles,
+                water_trend,
+                f"{new_interval.seconds}s" if new_interval.seconds < 120 else f"{new_interval.seconds/60:.0f}min"
+            )
+            self._last_alert_state[device_duid] = activity_level
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
         """Calculate pump on/off distance thresholds from observed water distances.
