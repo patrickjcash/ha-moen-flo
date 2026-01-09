@@ -19,9 +19,12 @@ from .statistics import async_import_pump_statistics
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
-SCAN_INTERVAL = timedelta(minutes=5)  # Normal polling
-SCAN_INTERVAL_ACTIVE = timedelta(minutes=2)  # Active pumping
-SCAN_INTERVAL_VERY_ACTIVE = timedelta(minutes=1)  # Very active pumping
+
+# Adaptive polling constants
+MIN_POLL_INTERVAL = 10  # Minimum polling interval in seconds
+MAX_POLL_INTERVAL = 300  # Maximum polling interval in seconds (5 minutes)
+ALERT_MAX_INTERVAL = 60  # Maximum interval when non-info alerts are active
+CYCLE_WINDOW_MINUTES = 15  # Look back window for counting recent cycles
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -75,7 +78,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=SCAN_INTERVAL,
+            update_interval=timedelta(seconds=MAX_POLL_INTERVAL),
         )
         self.client = client
         self.devices = {}
@@ -292,68 +295,74 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     def _update_poll_interval(self, device_duid: str, device_data: dict):
-        """Update polling interval based on pump activity and water level changes.
+        """Update polling interval based on pump activity and active alerts.
 
-        Adaptive polling based on:
-        1. Recent pump cycles (frequent cycles = faster polling)
-        2. Water level changes (rapid changes = faster polling)
-
-        Very Active (1 min): >=3 cycles in last 15 min OR rapid water level changes
-        Active (2 min): >=1 cycle in last 15 min OR moderate water level changes
-        Normal (5 min): No recent activity
+        Adaptive polling formula: interval = 180 / cycles_in_last_15_min
+        - Minimum: 10 seconds
+        - Maximum: 300 seconds (5 minutes)
+        - Alert override: 60 second maximum when non-info alerts are active
         """
         from datetime import datetime, timezone
 
-        # Get recent pump cycles
+        # Count cycles in last 15 minutes
         pump_cycles = device_data.get("pump_cycles", [])
         now = datetime.now(timezone.utc)
-
-        # Count cycles in last 15 minutes
         recent_cycles = 0
+
         for cycle in pump_cycles:
             try:
                 cycle_time_str = cycle.get("date", "")
                 if cycle_time_str:
                     cycle_time = datetime.fromisoformat(cycle_time_str.replace("Z", "+00:00"))
                     minutes_ago = (now - cycle_time).total_seconds() / 60
-                    if minutes_ago <= 15:
+                    if minutes_ago <= CYCLE_WINDOW_MINUTES:
                         recent_cycles += 1
             except (ValueError, AttributeError):
                 continue
 
-        # Get water level change rate
-        info = device_data.get("info", {})
-        droplet = info.get("droplet", {})
-        water_trend = droplet.get("trend", "stable")  # rising/stable/receding
-
-        # Determine activity level
-        if recent_cycles >= 3 or water_trend == "rising":
-            # Very active: pump running frequently or water rising
-            activity_level = "very_active"
-            new_interval = SCAN_INTERVAL_VERY_ACTIVE
-        elif recent_cycles >= 1:
-            # Active: some pumping activity
-            activity_level = "active"
-            new_interval = SCAN_INTERVAL_ACTIVE
+        # Calculate base interval: 180 / cycles (with divide-by-zero protection)
+        if recent_cycles == 0:
+            calculated_interval = MAX_POLL_INTERVAL
         else:
-            # Normal: no recent activity
-            activity_level = "normal"
-            new_interval = SCAN_INTERVAL
+            calculated_interval = 180 / recent_cycles
 
-        previous_state = self._last_alert_state.get(device_duid, "normal")
+        # Apply hard limits
+        calculated_interval = max(MIN_POLL_INTERVAL, min(calculated_interval, MAX_POLL_INTERVAL))
 
-        # Only update if state changed
-        if activity_level != previous_state:
+        # Check for non-info alerts
+        alerts = device_data.get("info", {}).get("alerts")
+        if not isinstance(alerts, dict):
+            alerts = {}
+
+        # Check if we have any non-info severity alerts
+        # We need to check the actual alert severity from logs/events
+        # For now, assume any alert in the alerts dict is non-info (info alerts might not be stored there)
+        has_non_info_alert = len(alerts) > 0
+
+        # Apply alert override
+        if has_non_info_alert:
+            final_interval = min(calculated_interval, ALERT_MAX_INTERVAL)
+        else:
+            final_interval = calculated_interval
+
+        # Create timedelta
+        new_interval = timedelta(seconds=final_interval)
+
+        # Get previous interval for comparison
+        previous_interval = self.update_interval.total_seconds() if self.update_interval else MAX_POLL_INTERVAL
+
+        # Only update and log if interval changed significantly (>5 seconds difference)
+        if abs(final_interval - previous_interval) > 5:
             self.update_interval = new_interval
+            alert_note = f" (capped by alerts)" if has_non_info_alert and final_interval == ALERT_MAX_INTERVAL else ""
             _LOGGER.info(
-                "Device %s activity level: %s (%d recent cycles, trend: %s), polling every %s",
+                "Device %s: %d cycles in last %d min → polling every %.0fs%s",
                 device_duid,
-                activity_level,
                 recent_cycles,
-                water_trend,
-                f"{new_interval.seconds}s" if new_interval.seconds < 120 else f"{new_interval.seconds/60:.0f}min"
+                CYCLE_WINDOW_MINUTES,
+                final_interval,
+                alert_note
             )
-            self._last_alert_state[device_duid] = activity_level
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
         """Calculate pump on/off distance thresholds from observed water distances.
