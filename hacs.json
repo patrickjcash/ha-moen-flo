@@ -1,6 +1,6 @@
 {
   "name": "Moen Smart Sump Pump Monitor",
-  "filename": "moen_flo_nab",
+  "filename": "moen_sump_pump",
   "render_readme": true,
   "homeassistant": "2024.1.0",
   "zip_release": false,

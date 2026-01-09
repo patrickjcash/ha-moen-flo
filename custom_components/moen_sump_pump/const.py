@@ -1,6 +1,6 @@
-"""Constants for the Moen Flo NAB integration."""
+"""Constants for the Moen Smart Sump Pump Monitor integration."""
 
-DOMAIN = "moen_flo_nab"
+DOMAIN = "moen_sump_pump"
 
 # Sensor Types
 SENSOR_WATER_LEVEL = "water_level"

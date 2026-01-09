@@ -13,7 +13,19 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v1.9.0
+## What's New in v2.0.0
+
+🔄 **BREAKING CHANGE: Domain Renamed** - The integration domain has been changed from `moen_flo_nab` to `moen_sump_pump`
+
+**⚠️ Important:** If upgrading from v1.x, you must:
+1. Remove the old integration from Home Assistant
+2. Restart Home Assistant
+3. Re-add the integration (your credentials will need to be re-entered)
+4. Note: Historical statistics will be lost due to the domain change
+
+This change provides a cleaner, more professional domain name before wider HACS publication.
+
+### Also New in v2.0.0
 
 🎯 **Separate Primary & Backup Pump Tracking** - Statistics now differentiate between primary and backup pump volumes!
 
@@ -130,14 +142,14 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
 
 2. **Copy Files**
    ```bash
-   cp -r ha-moen-flo/custom_components/moen_flo_nab /config/custom_components/
+   cp -r ha-moen-flo/custom_components/moen_sump_pump /config/custom_components/
    ```
 
    Your directory structure should look like:
    ```
    config/
    ├── custom_components/
-   │   └── moen_flo_nab/
+   │   └── moen_sump_pump/
    │       ├── __init__.py
    │       ├── manifest.json
    │       ├── api.py
@@ -152,7 +164,7 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
 
 ## Configuration
 
-[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=moen_flo_nab)
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=moen_sump_pump)
 
 1. Click the badge above to add the integration directly, OR navigate to **Settings** → **Devices & Services**
 2. Click the **+ Add Integration** button
