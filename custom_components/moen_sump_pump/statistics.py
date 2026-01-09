@@ -118,9 +118,26 @@ async def _import_stat_type(
 
     if last_stats and statistic_id in last_stats:
         last_stat = last_stats[statistic_id][0]
-        last_timestamp = datetime.fromisoformat(last_stat["end"]).replace(
-            tzinfo=timezone.utc
-        )
+        end_value = last_stat["end"]
+
+        # Handle different timestamp formats from database
+        if isinstance(end_value, datetime):
+            last_timestamp = end_value
+            if last_timestamp.tzinfo is None:
+                last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
+        elif isinstance(end_value, str):
+            last_timestamp = datetime.fromisoformat(end_value).replace(
+                tzinfo=timezone.utc
+            )
+        else:
+            _LOGGER.warning(
+                "Unexpected timestamp type in last_stats for %s: %s (type: %s)",
+                statistic_id,
+                end_value,
+                type(end_value).__name__,
+            )
+            last_timestamp = None
+
         last_sum = last_stat.get("sum", 0.0)
         _LOGGER.debug(
             "Last imported %s statistic for %s: %s (sum: %.1f gal)",
