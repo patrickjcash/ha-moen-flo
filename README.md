@@ -13,40 +13,30 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v2.0.0
+## What's New in v2.3.0
 
-🔄 **BREAKING CHANGE: Domain Renamed** - The integration domain has been changed from `moen_flo_nab` to `moen_sump_pump`
-
-**⚠️ Important:** If upgrading from v1.x, you must:
-1. Remove the old integration from Home Assistant
-2. Restart Home Assistant
-3. Re-add the integration (your credentials will need to be re-entered)
-4. Note: Historical statistics will be lost due to the domain change
-
-This change provides a cleaner, more professional domain name before wider HACS publication.
-
-### Also New in v2.0.0
-
-🎯 **Separate Primary & Backup Pump Tracking** - Statistics now differentiate between primary and backup pump volumes!
+🏘️ **Multiple Device & Location Support** - Manage multiple sump pump monitors across multiple houses!
 
 Key features:
-- **Three separate statistics**: Total, Primary, and Backup pump volumes
-- Track primary pump performance independently from backup pump usage
-- Identify when backup pump is running more frequently
-- Better insights for pump maintenance planning
+- **Multiple Devices**: Each sump pump monitor gets its own complete set of sensors
+- **Multiple Houses**: Device names automatically include location (e.g., "My Home Sump Pump Monitor")
+- **Smart Filtering**: Only shows sump pump monitors, ignores other Moen devices
 
-✨ **Smart Basin Fullness Calculation** - No more hardcoded values!
+🔔 **Dynamic Notification Descriptions** - Notification names now fetched from API!
 
-- Learns your basin's behavior from observed water distance readings
-- Adapts to any basin size and configuration automatically
-- Shows 0-100% fullness based on actual min/max observed distances
-- Requires just 5 readings to start providing data
+- No more hardcoding - pulls titles directly from Moen's event logs
+- Always matches current Moen app notification names
+- Automatically updates when Moen adds new notification types
+- Includes severity levels (critical, warning, info)
 
-🏷️ **Improved Integration Naming** - Cleaner UI throughout Home Assistant
+⏱️ **New Diagnostic Sensors**:
 
-- Integration now consistently labeled "Moen Smart Sump Pump Monitor"
-- Statistics properly named (e.g., "Sump Pump Total Pump Volume")
-- No more "moen_flo_nab" prefix in statistic names
+- **Polling Period**: Shows current adaptive polling interval
+- **Pump Cycles Last 15 Minutes**: Tracks recent pump activity
+
+🔘 **Dismiss All Notifications Button** - Dismiss active alerts right from Home Assistant!
+
+📊 **Enhanced Alert Codes** - 15+ notification types discovered and properly mapped
 
 Plus all the features from v1.8.x:
 - Long-term statistics with Energy Dashboard integration
