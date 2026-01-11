@@ -383,20 +383,6 @@ class MoenFloNABClient:
 
         return notification_map
 
-    async def get_last_pump_cycle(self, device_duid: str) -> Optional[Dict[str, Any]]:
-        """Get the most recent pump cycle event from logs.
-
-        Note: Event IDs are event TYPES, not sequential numbers.
-        Looking at recent events to find the most recent pump-related event.
-        """
-        logs = await self.get_device_logs(device_duid, limit=50)
-
-        # Return the most recent event (they're sorted by time, newest first)
-        if logs and len(logs) > 0:
-            return logs[0]
-
-        return None
-
     async def update_shadow(self, client_id: int, command: str = "sens_on") -> bool:
         """Trigger device to update its shadow with fresh sensor readings.
 

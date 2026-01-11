@@ -288,17 +288,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     device_data["pump_cycles"] = []
                     device_data["pump_thresholds"] = {}
 
-                # Get last pump cycle from logs using UUID
-                try:
-                    last_cycle = await self.client.get_last_pump_cycle(device_duid)
-                    device_data["last_cycle"] = last_cycle
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Failed to get last cycle for device %s: %s", device_duid, err
-                    )
-                    device_data["last_cycle"] = None
-
                 # Get event logs for water detection using UUID
+                # NOTE: Event logs are also used to build notification metadata
                 try:
                     events = await self.client.get_device_logs(device_duid, limit=50)
                     device_data["event_logs"] = {"events": events}

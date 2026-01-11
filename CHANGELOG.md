@@ -5,6 +5,25 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-01-11
+
+### Fixed
+- **Last Pump Cycle Sensor** - Critical fix for incorrect timestamps:
+  - Sensor was showing time of most recent event (any type) instead of actual pump cycle time
+  - Could display times from non-pump events like "Flood Risk Cleared", causing discrepancies of 60+ minutes
+  - Now uses pump session data exclusively, matching Moen app behavior
+  - Improved timestamp parsing to handle ISO format with 'Z' suffix correctly
+- **API Client** - Removed misleading `get_last_pump_cycle()` method that returned event logs, not pump cycles
+
+### Removed
+- Event log data from Last Pump Cycle sensor attributes (was misleading)
+- Coordinator call to fetch "last_cycle" from event logs (no longer used)
+
+### Technical Details
+- Last Pump Cycle sensor now sources data from `pump_cycles` array only
+- Event logs still fetched for notification metadata and water detection
+- Timestamp parsing changed from manual string manipulation to proper ISO format handling
+
 ## [2.3.0] - 2026-01-11
 
 ### Added

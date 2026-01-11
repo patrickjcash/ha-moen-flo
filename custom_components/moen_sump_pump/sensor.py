@@ -430,30 +430,11 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the last cycle time from device event logs.
+        """Return the last pump cycle time from pump session data.
 
-        Uses device logs (last_cycle) as primary source since it updates more
-        frequently than pump_cycles session data. Falls back to pump_cycles
-        if logs are unavailable.
+        Uses pump_cycles data which contains actual pump run timestamps.
+        Previously used event logs which could return any event type (not necessarily pump cycles).
         """
-        # Try device logs first (most current)
-        last_event = self.device_data.get("last_cycle")
-        if last_event:
-            try:
-                # Parse ISO timestamp from event log
-                time_str = last_event.get("time", "")
-                if time_str:
-                    # Remove microseconds and Z if present
-                    time_str = time_str.split('.')[0].replace('Z', '')
-                    dt = datetime.fromisoformat(time_str)
-                    # Ensure timezone-aware datetime (assume UTC if not specified)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    return dt
-            except (ValueError, TypeError, KeyError):
-                pass
-
-        # Fallback to pump cycles data
         cycles = self.device_data.get("pump_cycles", [])
         if cycles and len(cycles) > 0:
             latest = cycles[0]
@@ -461,12 +442,10 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
                 # Parse ISO timestamp
                 date_str = latest.get("date", "")
                 if date_str:
-                    # Remove microseconds and Z if present
-                    date_str = date_str.split('.')[0].replace('Z', '')
+                    # Handle ISO format with Z suffix
+                    if date_str.endswith('Z'):
+                        date_str = date_str.replace('Z', '+00:00')
                     dt = datetime.fromisoformat(date_str)
-                    # Ensure timezone-aware datetime (assume UTC if not specified)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
                     return dt
             except (ValueError, TypeError):
                 pass
@@ -497,14 +476,7 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
                 "water_out_duration": empty_time_display,
                 "backup_pump_ran": latest.get("backupRan"),
             }
-            
-            # Add most recent event from logs for context
-            last_event = self.device_data.get("last_cycle")
-            if last_event:
-                attrs["last_event_id"] = last_event.get("id")
-                attrs["last_event_title"] = last_event.get("title")
-                attrs["last_event_severity"] = last_event.get("severity")
-            
+
             return {k: v for k, v in attrs.items() if v is not None}
 
         return {}
