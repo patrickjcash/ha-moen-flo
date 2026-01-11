@@ -38,6 +38,9 @@ tests/*.json
 tests/*_test_*.json
 tests/*_exploration_*.json
 tests/output_*.json
+tests/event_id_mapping_*.json
+tests/notification_api_*.json
+tests/houses_notifications_exploration_*.json
 
 # Archived test scripts (development/debugging only)
 tests/archive/
@@ -48,6 +51,9 @@ tests/archive/
 *.pem
 *.key
 credentials.json
+
+# Deployment-specific files (contains private server info)
+DEPLOYMENT.md
 
 # OS
 .DS_Store

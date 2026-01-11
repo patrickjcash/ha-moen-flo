@@ -18,7 +18,7 @@ from .statistics import async_import_pump_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
 
 # Adaptive polling constants
 MIN_POLL_INTERVAL = 10  # Minimum polling interval in seconds
@@ -86,27 +86,56 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_alert_state = {}  # Track alert states for adaptive polling
         self._first_refresh = True  # Track if this is the first data fetch
         self._water_distance_history = {}  # Track water distance readings per device
+        self._notification_metadata = {}  # Cache notification ID to title mappings per device
 
     async def _async_update_data(self):
         """Fetch data from API."""
         try:
-            # Get list of devices
+            # Get list of locations (houses)
+            try:
+                locations = await self.client.get_locations()
+                _LOGGER.debug(f"Found {len(locations)} location(s)")
+            except Exception as err:
+                _LOGGER.warning(f"Failed to get locations: {err}")
+                locations = []
+
+            # Get list of all devices
             devices_list = await self.client.get_devices()
+
+            # Filter to only NAB (sump pump monitor) devices
+            nab_devices = [d for d in devices_list if d.get("deviceType") == "NAB"]
+
+            if not nab_devices:
+                _LOGGER.warning("No NAB (sump pump monitor) devices found")
+                return {}
+
+            _LOGGER.debug(f"Found {len(nab_devices)} NAB device(s) out of {len(devices_list)} total devices")
 
             data = {}
 
-            for device in devices_list:
+            for device in nab_devices:
                 device_duid = device.get("duid")
                 client_id = device.get("clientId")
+                location_id = device.get("locationId")
 
                 if not device_duid or not client_id:
                     _LOGGER.warning("Device missing duid or clientId: %s", device)
                     continue
 
-                # Store both IDs for future use
+                # Find the location name for this device
+                location_name = None
+                if location_id and locations:
+                    for loc in locations:
+                        if loc.get("locationId") == location_id:
+                            location_name = loc.get("nickname")
+                            break
+
+                # Store both IDs and location info for future use
                 device_data = {
                     "duid": device_duid,
                     "clientId": client_id,
+                    "locationId": location_id,
+                    "locationName": location_name,
                     "info": device,
                 }
 
@@ -278,6 +307,27 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         "Failed to get event logs for device %s: %s", device_duid, err
                     )
                     device_data["event_logs"] = {"events": []}
+
+                # Build notification metadata map (only once per device)
+                if device_duid not in self._notification_metadata:
+                    try:
+                        notification_map = await self.client.get_notification_metadata(device_duid)
+                        self._notification_metadata[device_duid] = notification_map
+                        _LOGGER.info(
+                            "Built notification metadata for device %s: %d types",
+                            device_duid[:8],
+                            len(notification_map)
+                        )
+                    except Exception as err:
+                        _LOGGER.warning(
+                            "Failed to build notification metadata for device %s: %s",
+                            device_duid,
+                            err
+                        )
+                        self._notification_metadata[device_duid] = {}
+
+                # Store notification metadata in device data for sensors to access
+                device_data["notification_metadata"] = self._notification_metadata.get(device_duid, {})
 
                 data[device_duid] = device_data
 

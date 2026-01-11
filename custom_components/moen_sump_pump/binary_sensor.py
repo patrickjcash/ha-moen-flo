@@ -32,7 +32,14 @@ async def async_setup_entry(
 
     for device_duid, device_data in coordinator.data.items():
         device_info = device_data.get("info", {})
-        device_name = device_info.get("nickname", f"Sump Pump {device_duid[:8]}")
+        location_name = device_data.get("locationName")
+
+        # Build device name with location if available
+        base_name = device_info.get("nickname", f"Sump Pump {device_duid[:8]}")
+        if location_name:
+            device_name = f"{location_name} {base_name}"
+        else:
+            device_name = base_name
 
         # Connectivity Sensor
         entities.append(

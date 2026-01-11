@@ -41,7 +41,14 @@ async def async_setup_entry(
 
     for device_duid, device_data in coordinator.data.items():
         device_info = device_data.get("info", {})
-        device_name = device_info.get("nickname", f"Sump Pump {device_duid[:8]}")
+        location_name = device_data.get("locationName")
+
+        # Build device name with location if available
+        base_name = device_info.get("nickname", f"Sump Pump {device_duid[:8]}")
+        if location_name:
+            device_name = f"{location_name} {base_name}"
+        else:
+            device_name = base_name
 
         # Water Distance Sensor
         entities.append(
@@ -72,6 +79,8 @@ async def async_setup_entry(
         # Diagnostic Sensors
         entities.append(MoenFloNABBatterySensor(coordinator, device_duid, device_name))
         entities.append(MoenFloNABWiFiSignalSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABPollingPeriodSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABPumpCyclesLast15MinSensor(coordinator, device_duid, device_name))
 
         # Alert Sensor
         entities.append(MoenFloNABLastAlertSensor(coordinator, device_duid, device_name))
@@ -639,7 +648,13 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
 
         # Return description of most recent active alert
         if most_recent_active:
-            description = ALERT_CODES.get(most_recent_active, f"Alert {most_recent_active}")
+            # Use dynamic notification metadata from API if available
+            notification_metadata = self.device_data.get("notification_metadata", {})
+            if most_recent_active in notification_metadata:
+                description = notification_metadata[most_recent_active].get("title", f"Alert {most_recent_active}")
+            else:
+                # Fallback to hardcoded mapping
+                description = ALERT_CODES.get(most_recent_active, f"Alert {most_recent_active}")
             return description
 
         return "No active alerts"
@@ -656,14 +671,25 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
         active_alerts = []
         inactive_alerts = []
 
+        # Get dynamic notification metadata
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
             timestamp_str = alert_data.get("timestamp", "")
-            description = ALERT_CODES.get(alert_id, f"Alert {alert_id}")
+
+            # Use dynamic metadata if available, fallback to hardcoded
+            if alert_id in notification_metadata:
+                description = notification_metadata[alert_id].get("title", f"Alert {alert_id}")
+                severity = notification_metadata[alert_id].get("severity", "unknown")
+            else:
+                description = ALERT_CODES.get(alert_id, f"Alert {alert_id}")
+                severity = "unknown"
 
             alert_info = {
                 "id": alert_id,
                 "description": description,
+                "severity": severity,
                 "timestamp": timestamp_str,
                 "state": state,
             }
@@ -1007,3 +1033,137 @@ class MoenFloNABBackupPumpInstalledSensor(MoenFloNABSensorBase):
         if installed is not None:
             return "Yes" if installed else "No"
         return None
+
+
+class MoenFloNABPollingPeriodSensor(MoenFloNABSensorBase):
+    """Polling period diagnostic sensor showing current update interval."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = "s"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_polling_period"
+        self._attr_name = f"{device_name} Polling Period"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current polling interval in seconds."""
+        if self.coordinator.update_interval:
+            return int(self.coordinator.update_interval.total_seconds())
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from datetime import datetime, timezone
+
+        # Count recent pump cycles for context
+        pump_cycles = self.device_data.get("pump_cycles", [])
+        now = datetime.now(timezone.utc)
+        recent_cycles = 0
+
+        for cycle in pump_cycles:
+            try:
+                cycle_time_str = cycle.get("date", "")
+                if cycle_time_str:
+                    cycle_time = datetime.fromisoformat(cycle_time_str.replace("Z", "+00:00"))
+                    minutes_ago = (now - cycle_time).total_seconds() / 60
+                    if minutes_ago <= 15:
+                        recent_cycles += 1
+            except (ValueError, AttributeError):
+                continue
+
+        # Check for active alerts
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+        active_alerts = sum(
+            1 for alert_data in alerts.values()
+            if isinstance(alert_data, dict)
+            and "active" in alert_data.get("state", "")
+            and "inactive" not in alert_data.get("state", "")
+        )
+
+        return {
+            "cycles_last_15_min": recent_cycles,
+            "active_alerts": active_alerts,
+            "adaptive_polling": "enabled",
+        }
+
+
+class MoenFloNABPumpCyclesLast15MinSensor(MoenFloNABSensorBase):
+    """Pump cycles in last 15 minutes diagnostic sensor."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "cycles"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:counter"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_pump_cycles_last_15_min"
+        self._attr_name = f"{device_name} Pump Cycles Last 15 Minutes"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the number of pump cycles in the last 15 minutes."""
+        from datetime import datetime, timezone
+
+        pump_cycles = self.device_data.get("pump_cycles", [])
+        now = datetime.now(timezone.utc)
+        recent_cycles = 0
+
+        for cycle in pump_cycles:
+            try:
+                cycle_time_str = cycle.get("date", "")
+                if cycle_time_str:
+                    cycle_time = datetime.fromisoformat(cycle_time_str.replace("Z", "+00:00"))
+                    minutes_ago = (now - cycle_time).total_seconds() / 60
+                    if minutes_ago <= 15:
+                        recent_cycles += 1
+            except (ValueError, AttributeError):
+                continue
+
+        return recent_cycles
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from datetime import datetime, timezone
+
+        pump_cycles = self.device_data.get("pump_cycles", [])
+        now = datetime.now(timezone.utc)
+
+        # Get timestamps of recent cycles
+        recent_cycle_times = []
+        for cycle in pump_cycles:
+            try:
+                cycle_time_str = cycle.get("date", "")
+                if cycle_time_str:
+                    cycle_time = datetime.fromisoformat(cycle_time_str.replace("Z", "+00:00"))
+                    minutes_ago = (now - cycle_time).total_seconds() / 60
+                    if minutes_ago <= 15:
+                        recent_cycle_times.append(cycle_time_str)
+            except (ValueError, AttributeError):
+                continue
+
+        attrs = {}
+        if recent_cycle_times:
+            attrs["recent_cycle_times"] = recent_cycle_times
+            attrs["most_recent_cycle"] = recent_cycle_times[0] if recent_cycle_times else None
+
+        return attrs

@@ -5,6 +5,70 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-01-11
+
+### Added
+- **Multiple Device Support** - Full support for multiple sump pump monitors:
+  - Each NAB device gets its own complete set of sensors and binary sensors
+  - Automatic filtering to only show NAB (sump pump monitor) devices
+  - Ignores other Moen device types (e.g., water shutoff valves)
+- **Multiple House/Location Support** - Devices linked to their houses:
+  - Fetches house/location information from API
+  - Device names prefixed with location (e.g., "My Home Sump Pump Monitor")
+  - Proper device organization for multi-location setups
+- **Dynamic Notification Descriptions** - Notification names fetched from API:
+  - No longer hardcoded - pulls notification titles from event logs
+  - Always matches current Moen app notification names
+  - Automatically updates when Moen adds new notification types
+  - Includes severity levels (critical, warning, info)
+  - Falls back gracefully to hardcoded mappings if needed
+- **Polling Period Diagnostic Sensor** - Shows current update interval:
+  - Displays adaptive polling interval in seconds
+  - Attributes show recent pump cycles and active alerts
+  - Helps users understand integration's adaptive polling behavior
+- **Pump Cycles Last 15 Minutes Diagnostic Sensor** - Tracks recent activity:
+  - Counts pump cycles in the last 15 minutes
+  - Attributes include timestamps of recent cycles
+  - Useful for monitoring high-frequency pump activity
+- **Dismiss All Notifications Button** - New button entity:
+  - Allows dismissing all active alerts from Home Assistant
+  - Attempts to acknowledge each active notification
+  - Refreshes coordinator data after dismissal
+  - Some notifications may not be dismissable by API
+
+### Changed
+- **Device Nicknames** - Now pulled from API `nickname` field instead of defaults
+- **Entity Naming** - Devices now named as `{Location} {Nickname}` when location available
+- **Notification Metadata** - Built dynamically from event logs, cached per device
+
+### Fixed
+- **Alert Code Mappings** - Updated with newly discovered notification IDs:
+  - Alert 224: High Water Level (was "Unknown Alert")
+  - Alert 225: Normal Water Level (new)
+  - Alert 236: Sensor Too Close (new)
+  - Alert 259: Flood Risk Cleared (new)
+  - Alert 261: Main Pump Reset (new)
+  - Alert 262: Main Pump Overwhelmed (was "Primary Pump Lagging")
+  - Alert 263: Main Pump Recovered (new)
+  - Alert 266: Main Pump Not Stopping (was from args)
+  - Alert 267: Main Pump Stops Normally (new)
+  - Alert 269: Backup Pump Reset (new)
+
+### Technical Details
+- Added `get_locations()` API method to fetch houses
+- Added `get_notification_metadata()` to build ID-to-title mapping from event logs
+- Coordinator caches notification metadata to avoid repeated API calls
+- Button platform added to manifest and __init__.py
+- NAB device filtering in coordinator update cycle
+- Location linking via `locationId` field in device data
+- Event log mining for notification titles (fetches 200 events)
+- Dynamic descriptions with fallback to `ALERT_CODES` constant
+
+### Documentation
+- Added [NOTIFICATION_DISCOVERY.md](NOTIFICATION_DISCOVERY.md) - Details notification system implementation
+- Added test scripts in tests/archive/ for API exploration
+- Updated .gitignore to exclude deployment-specific files
+
 ## [1.8.2] - 2026-01-08
 
 ### Fixed

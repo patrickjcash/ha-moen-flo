@@ -177,30 +177,66 @@ class MoenFloNABClient:
             _LOGGER.error(f"Network error invoking {function_name}: {err}")
             raise MoenFloNABApiError(f"Network error: {err}")
 
-    async def get_devices(self) -> List[Dict[str, Any]]:
-        """Get list of devices with both UUID and numeric ID."""
+    async def get_locations(self) -> List[Dict[str, Any]]:
+        """Get list of all locations/houses for the account.
+
+        Returns list of locations with:
+        - locationId: Unique location identifier
+        - nickname: User-defined name for the location
+        - federatedIdentity: User's cognito identity
+        """
+        payload = {}
+        response = await self._invoke_lambda(
+            "smartwater-app-location-api-prod-list", payload
+        )
+
+        # Response is a direct list
+        if isinstance(response, list):
+            return response
+
+        return []
+
+    async def get_devices(self, location_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get list of devices with both UUID and numeric ID.
+
+        Args:
+            location_id: Optional location ID to filter devices
+
+        Returns:
+            List of devices. Each device includes:
+            - duid: Device UUID
+            - clientId: Numeric client ID
+            - nickname: User-defined device name
+            - locationId: Location the device belongs to
+            - roomId: Room the device is in
+            - deviceType: Device type (NAB for sump pump monitors)
+        """
         payload = {"locale": "en_US"}
         response = await self._invoke_lambda(
             "smartwater-app-device-api-prod-list", payload
         )
-        
+
         # Response can be direct list or nested in body
+        devices = []
         if isinstance(response, list):
-            return response
-        
-        if isinstance(response, dict):
+            devices = response
+        elif isinstance(response, dict):
             if "data" in response:
-                return response["data"]
-            if "body" in response:
+                devices = response["data"]
+            elif "body" in response:
                 body = response["body"]
                 if isinstance(body, str):
                     body = json.loads(body)
                 if isinstance(body, list):
-                    return body
-                if isinstance(body, dict) and "data" in body:
-                    return body["data"]
-        
-        return []
+                    devices = body
+                elif isinstance(body, dict) and "data" in body:
+                    devices = body["data"]
+
+        # Filter by location if specified
+        if location_id and devices:
+            devices = [d for d in devices if d.get("locationId") == location_id]
+
+        return devices
 
     async def get_device_data(self, device_duid: str) -> Dict[str, Any]:
         """Get detailed device data using UUID."""
@@ -286,7 +322,7 @@ class MoenFloNABClient:
         self, device_duid: str, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Get device event logs using UUID.
-        
+
         CRITICAL: Uses UUID duid, NOT numeric clientId!
         Returns event log entries with id, title, time, severity, text.
         """
@@ -296,16 +332,56 @@ class MoenFloNABClient:
             "limit": limit,
             "locale": "en_US"
         }
-        
+
         response = await self._invoke_lambda(
             "fbgpg_logs_v1_get_device_logs_user_prod", payload
         )
-        
+
         # Extract events array
         if isinstance(response, dict) and "events" in response:
             return response["events"]
-        
+
         return []
+
+    async def get_notification_metadata(self, device_duid: str) -> Dict[str, Dict[str, str]]:
+        """Build notification ID to description mapping from event logs.
+
+        This extracts notification metadata (ID, title, severity) from device
+        event logs. Since the API doesn't provide a dedicated notification
+        metadata endpoint, we mine the event logs to build the mapping.
+
+        Args:
+            device_duid: Device UUID
+
+        Returns:
+            Dictionary mapping notification ID to metadata:
+            {
+                "218": {"title": "Backup Test Scheduled", "severity": "info"},
+                "224": {"title": "High Water Level", "severity": "warning"},
+                ...
+            }
+        """
+        # Get a large sample of events to capture all notification types
+        events = await self.get_device_logs(device_duid, limit=200)
+
+        notification_map = {}
+
+        for event in events:
+            event_id = str(event.get("id", ""))
+            title = event.get("title", "")
+            severity = event.get("severity", "")
+
+            if event_id and title and event_id not in notification_map:
+                notification_map[event_id] = {
+                    "title": title,
+                    "severity": severity,
+                }
+
+        _LOGGER.debug(
+            f"Built notification metadata map with {len(notification_map)} types from event logs"
+        )
+
+        return notification_map
 
     async def get_last_pump_cycle(self, device_duid: str) -> Optional[Dict[str, Any]]:
         """Get the most recent pump cycle event from logs.
@@ -378,6 +454,67 @@ class MoenFloNABClient:
         )
 
         return response if isinstance(response, dict) else {}
+
+    async def acknowledge_alert(self, client_id: int, alert_id: str) -> bool:
+        """Acknowledge/dismiss a specific alert.
+
+        Args:
+            client_id: Numeric device client ID
+            alert_id: Alert ID to acknowledge (e.g., "218", "266")
+
+        Returns:
+            True if acknowledgement was successful, False otherwise
+        """
+        # Try to update the shadow to acknowledge the alert
+        # This may set the alert to "acked" or "suppressed" state
+        payload = {
+            "clientId": client_id,
+            "alertAck": alert_id
+        }
+
+        try:
+            response = await self._invoke_lambda(
+                "smartwater-app-shadow-api-prod-update", payload
+            )
+            _LOGGER.debug(f"Acknowledged alert {alert_id}: {response}")
+            return True
+        except Exception as err:
+            _LOGGER.error(f"Failed to acknowledge alert {alert_id}: {err}")
+            return False
+
+    async def dismiss_all_alerts(self, client_id: int) -> Dict[str, bool]:
+        """Dismiss all active alerts for a device.
+
+        Args:
+            client_id: Numeric device client ID
+
+        Returns:
+            Dictionary mapping alert IDs to success status
+        """
+        # First, get current alerts
+        shadow = await self.get_shadow(client_id)
+        if not shadow or "state" not in shadow:
+            _LOGGER.warning(f"No shadow data for device {client_id}")
+            return {}
+
+        reported = shadow.get("state", {}).get("reported", {})
+        alerts = reported.get("alerts", {})
+
+        if not alerts:
+            _LOGGER.info(f"No alerts to dismiss for device {client_id}")
+            return {}
+
+        # Attempt to acknowledge each active alert
+        results = {}
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            # Only dismiss active alerts
+            if "active" in state and "inactive" not in state:
+                success = await self.acknowledge_alert(client_id, alert_id)
+                results[alert_id] = success
+                _LOGGER.info(f"Alert {alert_id} dismiss: {'success' if success else 'failed'}")
+
+        return results
 
     def create_mqtt_client(self, client_id: int) -> Optional['MoenFloNABMqttClient']:
         """Create an MQTT client for real-time device data.
