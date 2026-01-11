@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Multiple Device Support** - Full support for multiple sump pump monitors:
-  - Each NAB device gets its own complete set of sensors and binary sensors
-  - Automatic filtering to only show NAB (sump pump monitor) devices
+  - Each device gets its own complete set of sensors and binary sensors
+  - Automatic filtering to only show sump pump monitors
   - Ignores other Moen device types (e.g., water shutoff valves)
 - **Multiple House/Location Support** - Devices linked to their houses:
   - Fetches house/location information from API
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `get_notification_metadata()` to build ID-to-title mapping from event logs
 - Coordinator caches notification metadata to avoid repeated API calls
 - Button platform added to manifest and __init__.py
-- NAB device filtering in coordinator update cycle
+- Sump pump monitor device filtering in coordinator update cycle
 - Location linking via `locationId` field in device data
 - Event log mining for notification titles (fetches 200 events)
 - Dynamic descriptions with fallback to `ALERT_CODES` constant
