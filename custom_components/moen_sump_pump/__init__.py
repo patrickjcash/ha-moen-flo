@@ -152,6 +152,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         else:
                             _LOGGER.warning("Failed to connect MQTT for device %s, using REST fallback", device_duid)
                             mqtt_client = None
+                elif mqtt_client.needs_reconnect():
+                    # Credentials expired, need to reconnect with fresh ID token
+                    _LOGGER.info("MQTT credentials expired for device %s, reconnecting", device_duid)
+                    # Ensure we have fresh tokens
+                    await self.client.authenticate()
+                    # Reconnect with new ID token
+                    reconnected = await mqtt_client.reconnect_with_new_token(self.client._id_token)
+                    if not reconnected:
+                        _LOGGER.warning("Failed to reconnect MQTT for device %s, using REST fallback", device_duid)
+                        mqtt_client = None
+                        # Remove from cache so we can try fresh connection next time
+                        self.mqtt_clients.pop(device_duid, None)
 
                 # Get live telemetry via MQTT or REST fallback
                 try:

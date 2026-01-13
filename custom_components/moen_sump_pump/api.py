@@ -548,6 +548,7 @@ class MoenFloNABMqttClient:
         self._shadow_callbacks: List[Callable[[Dict[str, Any]], None]] = []
         self._connected = False
         self._last_shadow_data: Optional[Dict[str, Any]] = None
+        self._credentials_expiry: Optional[datetime] = None
 
     def _get_aws_credentials(self) -> Dict[str, str]:
         """Get temporary AWS credentials from Cognito using ID token."""
@@ -570,6 +571,21 @@ class MoenFloNABMqttClient:
         )
 
         credentials = credentials_response['Credentials']
+
+        # Track credential expiration (AWS credentials typically valid for 1 hour)
+        # Set expiry to 5 minutes before actual expiration to ensure smooth refresh
+        expiration = credentials.get('Expiration')
+        if expiration:
+            # AWS returns timezone-aware datetime, convert to naive local time
+            if expiration.tzinfo is not None:
+                expiration = expiration.replace(tzinfo=None)
+            self._credentials_expiry = expiration - timedelta(minutes=5)
+            _LOGGER.debug(f"AWS credentials expire at {expiration}, will refresh at {self._credentials_expiry}")
+        else:
+            # Fallback if no expiration provided (default 1 hour minus 5 min buffer)
+            self._credentials_expiry = datetime.now() + timedelta(minutes=55)
+            _LOGGER.debug(f"No expiration in credentials, using default refresh at {self._credentials_expiry}")
+
         return {
             'access_key': credentials['AccessKeyId'],
             'secret_key': credentials['SecretKey'],
@@ -770,3 +786,43 @@ class MoenFloNABMqttClient:
                 _LOGGER.error(f"Error disconnecting from MQTT: {err}")
             finally:
                 self._connected = False
+
+    def needs_reconnect(self) -> bool:
+        """Check if MQTT connection needs to be refreshed due to credential expiration.
+
+        Returns:
+            True if credentials are expired or about to expire
+        """
+        if not self._connected:
+            return True
+
+        if not self._credentials_expiry:
+            # No expiry tracked, assume we need to reconnect after 50 minutes
+            return True
+
+        # Check if credentials have expired or will expire soon
+        now = datetime.now()
+        needs_refresh = now >= self._credentials_expiry
+        if needs_refresh:
+            _LOGGER.info(f"AWS credentials expired for device {self.client_id}, reconnection needed")
+        return needs_refresh
+
+    async def reconnect_with_new_token(self, new_id_token: str) -> bool:
+        """Reconnect MQTT with a new ID token.
+
+        Args:
+            new_id_token: Fresh Cognito ID token
+
+        Returns:
+            True if reconnection successful
+        """
+        _LOGGER.info(f"Reconnecting MQTT for device {self.client_id} with fresh credentials")
+
+        # Disconnect existing connection
+        await self.disconnect()
+
+        # Update ID token
+        self.id_token = new_id_token
+
+        # Reconnect with fresh credentials
+        return await self.connect()
