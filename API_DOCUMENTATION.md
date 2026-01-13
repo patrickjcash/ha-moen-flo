@@ -450,6 +450,84 @@ Entities (Sensors + Binary Sensors)
 - Check for batch/bulk data endpoints
 - Investigate websocket/push notification capabilities
 
+## Additional Endpoints Discovered (2026-01-11)
+
+### Alert Management
+
+#### Acknowledge Alert
+**Function:** `fbgpg_alerts_v1_acknowledge_alert_prod`
+**Purpose:** Mark alert as acknowledged/seen
+**Payload:**
+```json
+{
+  "fn": "fbgpg_alerts_v1_acknowledge_alert_prod",
+  "parse": true,
+  "escape": true,
+  "body": {
+    "pathParameters": {
+      "duid": "device-uuid",
+      "alertEventId": "262"
+    }
+  }
+}
+```
+**Response:** HTTP 204 No Content
+**Status:** ⚠️ Returns success but effect unclear
+
+#### Silence Alert
+**Function:** `fbgpg_alerts_v1_silence_alert_prod`
+**Purpose:** Silence/dismiss alert
+**Payload:** Same as acknowledge
+**Response:** HTTP 204 No Content
+**Status:** ⚠️ Returns success but alert remains visible
+
+#### Get Alerts Endpoints
+- `fbgpg_alerts_v1_get_alerts_by_user_prod` - All alerts for user
+- `fbgpg_alerts_v1_get_alerts_current_by_user_prod` - Current alerts
+- `fbgpg_alerts_v2_get_alerts_active_by_user_prod` - Active alerts (V2)
+- `fbgpg_v1_get_alerts_by_duid_prod` - Alerts by device UUID
+
+#### Alert Settings
+- `fbgpg_user_v1_alert_settings_by_device_get_prod` - Get alert settings
+- `fbgpg_user_v1_alert_settings_update_prod` - Update alert settings
+
+### Device Management
+
+- `fbgpg_device_v1_get_device_prod` - Get device details (NAB)
+- `fbgpg_device_v1_update_attribute_prod` - Update device attributes
+- `fbgpg_device_v1_device_get_latest_firmware_prod` - Check firmware updates
+- `fbgpg_device_v1_get_backup_test_status_prod` - Backup pump test status
+
+### Usage & Environment
+
+- `fbgpg_usage_v1_get_my_usage_device_history_top10_prod` - Top 10 usage periods
+- `fbgpg_usage_v1_get_last_usage_prod` - Most recent usage
+- `fbgpg_usage_v1_put_usage_reset_device_capacity_prod` - Reset capacity tracking
+- `fbgpg_usage_v1_get_device_environment_latest_prod` - Environment data (temp/humidity)
+
+### User Settings
+
+- `fbgpg_user_v1_user_settings_get_prod` - Get user preferences
+- `fbgpg_user_v1_user_settings_put_prod` - Update preferences
+
+### Endpoint Naming Patterns
+
+**Legacy:** `smartwater-app-{service}-api-prod-{action}`
+**New (FBGPG):** `fbgpg_{service}_v{version}_{action}_{environment}`
+
+**Service Codes:**
+- `alerts` - Alert management
+- `device` - Device control
+- `usage` - Statistics/history
+- `logs` - Event logging
+- `user` - Settings/preferences
+
+### Investigation Notes
+
+All endpoints discovered via decompiled Android app analysis (`/Users/patrick/python/base/sources/com/moen/smartwater/base/utils/ConstantsKt.java`).
+
+Alert dismissal endpoints (acknowledge/silence) return 204 success but don't visibly dismiss alerts - requires further investigation. See `tests/ALERT_DISMISSAL_INVESTIGATION.md` for detailed findings.
+
 ## Reverse Engineering Tools Used
 
 1. **mitmproxy** - Intercept HTTPS traffic from mobile app
