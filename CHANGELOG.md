@@ -5,6 +5,21 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] - 2026-01-13
+
+### Fixed
+- **Critical Bug: Pump Cycles Data Not Loading** - Fixed issue where pump cycle history was never fetched:
+  - API client's `_cognito_identity_id` was never set, causing pump cycles API to fail silently
+  - Affected sensors: Pump Cycles Last 15 Minutes (always showed 0), Last Pump Cycle (missing data)
+  - Affected statistics: Pump volume statistics were not being imported
+  - Now properly extracts `federatedIdentity` from device data and sets it before API calls
+  - This was a regression introduced in v2.3.0 when multi-device support was added
+
+### Technical Details
+- Coordinator now sets `client._cognito_identity_id` from device's `federatedIdentity` field
+- Added warning log if `federatedIdentity` is missing from device data
+- Fixes pump cycles, environment data, and pump health API calls
+
 ## [2.3.2] - 2026-01-13
 
 ### Fixed

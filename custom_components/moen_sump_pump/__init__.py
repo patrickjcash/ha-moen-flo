@@ -117,10 +117,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 device_duid = device.get("duid")
                 client_id = device.get("clientId")
                 location_id = device.get("locationId")
+                federated_identity = device.get("federatedIdentity")
 
                 if not device_duid or not client_id:
                     _LOGGER.warning("Device missing duid or clientId: %s", device)
                     continue
+
+                # Set cognito identity ID for API calls that require it
+                # (pump cycles, environment data, pump health)
+                if federated_identity:
+                    self.client._cognito_identity_id = federated_identity
+                else:
+                    _LOGGER.warning("Device %s missing federatedIdentity, some API calls may fail", device_duid)
 
                 # Find the location name for this device
                 location_name = None
