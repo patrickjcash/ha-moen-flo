@@ -334,18 +334,21 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
         if not alerts:
             return False
 
-        # Get notification metadata for severity info
-        notification_metadata = self.device_data.get("notification_metadata", {})
-
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            # Check if alert is active
+            # Check if alert is active (not inactive)
             if "active" in state and "inactive" not in state:
-                # Check severity from metadata
-                if alert_id in notification_metadata:
-                    severity = notification_metadata[alert_id].get("severity", "").lower()
-                    if severity == "critical":
-                        return True
+                # Get severity directly from alert (v2 API provides this)
+                severity = alert_data.get("severity", "").lower()
+
+                # Fallback to notification metadata if severity not in alert
+                if not severity:
+                    notification_metadata = self.device_data.get("notification_metadata", {})
+                    if alert_id in notification_metadata:
+                        severity = notification_metadata[alert_id].get("severity", "").lower()
+
+                if severity == "critical":
+                    return True
 
         return False
 
@@ -361,15 +364,24 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
             if "active" in state and "inactive" not in state:
-                if alert_id in notification_metadata:
+                # Get severity directly from alert (v2 API)
+                severity = alert_data.get("severity", "").lower()
+                title = alert_data.get("title")
+
+                # Fallback to notification metadata
+                if not severity and alert_id in notification_metadata:
                     severity = notification_metadata[alert_id].get("severity", "").lower()
-                    if severity == "critical":
-                        critical_alerts.append({
-                            "id": alert_id,
-                            "description": notification_metadata[alert_id].get("title", f"Alert {alert_id}"),
-                            "timestamp": alert_data.get("timestamp"),
-                            "state": state,
-                        })
+                if not title and alert_id in notification_metadata:
+                    title = notification_metadata[alert_id].get("title", f"Alert {alert_id}")
+
+                if severity == "critical":
+                    critical_alerts.append({
+                        "id": alert_id,
+                        "description": title or f"Alert {alert_id}",
+                        "timestamp": alert_data.get("timestamp"),
+                        "state": state,
+                        "severity": severity,
+                    })
 
         attrs = {
             "critical_alert_count": len(critical_alerts),
@@ -406,18 +418,21 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
         if not alerts:
             return False
 
-        # Get notification metadata for severity info
-        notification_metadata = self.device_data.get("notification_metadata", {})
-
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            # Check if alert is active
+            # Check if alert is active (not inactive)
             if "active" in state and "inactive" not in state:
-                # Check severity from metadata
-                if alert_id in notification_metadata:
-                    severity = notification_metadata[alert_id].get("severity", "").lower()
-                    if severity == "warning":
-                        return True
+                # Get severity directly from alert (v2 API provides this)
+                severity = alert_data.get("severity", "").lower()
+
+                # Fallback to notification metadata if severity not in alert
+                if not severity:
+                    notification_metadata = self.device_data.get("notification_metadata", {})
+                    if alert_id in notification_metadata:
+                        severity = notification_metadata[alert_id].get("severity", "").lower()
+
+                if severity == "warning":
+                    return True
 
         return False
 
@@ -433,15 +448,24 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
             if "active" in state and "inactive" not in state:
-                if alert_id in notification_metadata:
+                # Get severity directly from alert (v2 API)
+                severity = alert_data.get("severity", "").lower()
+                title = alert_data.get("title")
+
+                # Fallback to notification metadata
+                if not severity and alert_id in notification_metadata:
                     severity = notification_metadata[alert_id].get("severity", "").lower()
-                    if severity == "warning":
-                        warning_alerts.append({
-                            "id": alert_id,
-                            "description": notification_metadata[alert_id].get("title", f"Alert {alert_id}"),
-                            "timestamp": alert_data.get("timestamp"),
-                            "state": state,
-                        })
+                if not title and alert_id in notification_metadata:
+                    title = notification_metadata[alert_id].get("title", f"Alert {alert_id}")
+
+                if severity == "warning":
+                    warning_alerts.append({
+                        "id": alert_id,
+                        "description": title or f"Alert {alert_id}",
+                        "timestamp": alert_data.get("timestamp"),
+                        "state": state,
+                        "severity": severity,
+                    })
 
         attrs = {
             "warning_alert_count": len(warning_alerts),

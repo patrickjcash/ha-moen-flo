@@ -37,9 +37,9 @@ async def async_setup_entry(
         else:
             device_name = base_name
 
-        # Dismiss All Notifications Button
+        # Dismiss Alerts Button
         entities.append(
-            MoenFloNABDismissNotificationsButton(coordinator, device_duid, device_name)
+            MoenFloNABDismissAlertsButton(coordinator, device_duid, device_name)
         )
 
     async_add_entities(entities)
@@ -77,8 +77,8 @@ class MoenFloNABButtonBase(CoordinatorEntity, ButtonEntity):
         }
 
 
-class MoenFloNABDismissNotificationsButton(MoenFloNABButtonBase):
-    """Button to dismiss all active notifications."""
+class MoenFloNABDismissAlertsButton(MoenFloNABButtonBase):
+    """Button to dismiss all active alerts."""
 
     _attr_icon = "mdi:bell-cancel"
 
@@ -90,18 +90,18 @@ class MoenFloNABDismissNotificationsButton(MoenFloNABButtonBase):
     ) -> None:
         """Initialize the button."""
         super().__init__(coordinator, device_duid, device_name)
-        self._attr_unique_id = f"{device_duid}_dismiss_notifications"
-        self._attr_name = f"{device_name} Dismiss All Notifications"
+        self._attr_unique_id = f"{device_duid}_dismiss_alerts"
+        self._attr_name = f"{device_name} Dismiss Alerts"
 
     async def async_press(self) -> None:
-        """Handle button press to dismiss all active notifications."""
+        """Handle button press to dismiss all active alerts."""
         client_id = self.device_data.get("clientId")
 
         if not client_id:
             _LOGGER.error("No client ID found for device %s", self.device_duid)
             return
 
-        _LOGGER.info("Dismissing all active notifications for device %s", self.device_duid)
+        _LOGGER.info("Dismissing all active alerts for device %s", self.device_duid)
 
         try:
             # Call the API to dismiss all alerts
@@ -111,7 +111,7 @@ class MoenFloNABDismissNotificationsButton(MoenFloNABButtonBase):
                 dismissed_count = sum(1 for success in results.values() if success)
                 total_count = len(results)
                 _LOGGER.info(
-                    "Dismissed %d of %d active notifications for device %s",
+                    "Dismissed %d of %d active alerts for device %s",
                     dismissed_count,
                     total_count,
                     self.device_duid,
@@ -120,7 +120,7 @@ class MoenFloNABDismissNotificationsButton(MoenFloNABButtonBase):
                 # Refresh coordinator data to update sensors
                 await self.coordinator.async_request_refresh()
             else:
-                _LOGGER.info("No active notifications to dismiss for device %s", self.device_duid)
+                _LOGGER.info("No active alerts to dismiss for device %s", self.device_duid)
 
         except Exception as err:
-            _LOGGER.error("Failed to dismiss notifications: %s", err)
+            _LOGGER.error("Failed to dismiss alerts: %s", err)

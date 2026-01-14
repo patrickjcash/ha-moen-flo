@@ -292,20 +292,79 @@ def dismiss_alert(alert):
 - `tests/ALERT_DISMISSAL_INVESTIGATION.md`
 - `tests/ALERT_STATE_EXPLANATION.md`
 
-## Next Steps
+## Final Solution (Implemented in v2.4.1)
 
-1. **Find "Reset Primary Pump Status" endpoint**
-   - Search decompiled app for reset/pump endpoints
-   - Identify API call structure
-   - Test on alert 266
+### What Was Fixed
 
-2. **Find "Reset Backup Pump Status" endpoint**
-   - Similar to primary pump reset
+The integration now correctly dismisses alerts using the proper API endpoints and matches the mobile app's behavior.
 
-3. **Implement dual-pathway dismissal in HA integration**
-   - Check `dismiss` field
-   - Route to appropriate endpoint
+### Implementation Details
 
-4. **Update HA integration to use CURRENT endpoint**
-   - Change from shadow/ACTIVE to CURRENT endpoint
-   - This alone will fix the UI display issue
+1. **Correct Acknowledge Endpoint**:
+   - Uses `fbgpg_alerts_v1_acknowledge_alert_prod` with pathParameters format
+   - Payload: `{"duid": "<numeric_client_id>", "alertEventId": "<alert_id>"}`
+   - This successfully removes dismissible alerts from the ACTIVE alerts list
+
+2. **Alert Retrieval**:
+   - Integration uses `fbgpg_alerts_v2_get_alerts_active_by_user_prod` (matches mobile app)
+   - Returns all unacknowledged alerts (both active and inactive states)
+   - Provides severity, title, dismiss flag directly in response
+
+3. **Dismiss Logic**:
+   - Only attempts to dismiss alerts with `dismiss: true`
+   - Alerts with `dismiss: false` are skipped (require device action or auto-clear)
+   - Button dismisses all dismissible alerts in one operation
+
+4. **Button Renamed**:
+   - "Dismiss All Notifications" → "Dismiss Alerts" (consistent naming)
+
+### Key Files Modified
+
+- `custom_components/moen_sump_pump/api.py`:
+  - Added `_invoke_lambda_with_path_params()` method
+  - Added `get_active_alerts()` method
+  - Fixed `acknowledge_alert()` to use v1 endpoint
+  - Updated `dismiss_all_alerts()` to use ACTIVE endpoint
+
+- `custom_components/moen_sump_pump/__init__.py`:
+  - Coordinator now fetches alerts from ACTIVE API
+  - Converts list format to dictionary for sensor compatibility
+  - Stores severity/title directly in alert data
+
+- `custom_components/moen_sump_pump/binary_sensor.py`:
+  - Critical/Warning sensors now read severity from alert data directly
+  - Fallback to notification_metadata if needed
+
+- `custom_components/moen_sump_pump/button.py`:
+  - Renamed button class and display name
+
+### Testing Results
+
+✅ Alert 262 ("Main Pump Overwhelmed") successfully dismissed
+✅ Alert disappeared from both mobile app and ACTIVE endpoint
+✅ Non-dismissible alerts (e.g., "Backup Test Scheduled") correctly remain
+✅ Integration behavior matches mobile app exactly
+
+### What We Learned
+
+1. **ACTIVE vs CURRENT endpoints**:
+   - ACTIVE: All unacknowledged alerts (what app uses) ✓
+   - CURRENT: Only dismissible inactive alerts
+
+2. **Shadow API approach doesn't work**:
+   - `smartwater-app-shadow-api-prod-update` with `alertAck` field does NOT dismiss alerts
+   - This was the bug in the original implementation
+
+3. **v1 vs v2 API structure**:
+   - v1 acknowledge requires pathParameters format with `parse: true, escape: true`
+   - v2 APIs use standard body format
+   - v1 `silence_alert` and `acknowledge_alert` are functionally identical
+
+### Future Considerations
+
+For alerts with `dismiss: false` that require device action (Pathway 2):
+- Alert 266 "Main Pump Not Stopping" → Requires `rst_primary` command
+- Alert 268 "Backup Pump Not Stopping" → Requires `rst_backup` command
+- These could be implemented as separate button entities if needed
+
+The integration now fully supports Pathway 1 (dismiss: true) alerts, which covers the majority of user-dismissible alerts.

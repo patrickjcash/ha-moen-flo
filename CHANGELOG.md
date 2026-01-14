@@ -5,6 +5,31 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-01-14
+
+### Fixed
+- **Alert Dismissal** - Fixed "Dismiss Alerts" button that was not working:
+  - Now uses correct v1 acknowledge endpoint (`fbgpg_alerts_v1_acknowledge_alert_prod`) with pathParameters format
+  - Previous implementation used shadow update endpoint which did not actually dismiss alerts
+  - Alerts now correctly disappear from both integration and mobile app after dismissal
+  - Only attempts to dismiss alerts with `dismiss: true` flag
+  - Non-dismissible alerts (e.g., "Backup Test Scheduled") are correctly skipped
+
+### Changed
+- **Alert Data Source** - Integration now uses v2 ACTIVE alerts API instead of shadow alerts:
+  - Matches mobile app behavior exactly (shows all unacknowledged alerts)
+  - Provides severity and title directly without requiring metadata lookup
+  - More efficient and reliable than shadow-based approach
+  - Falls back to shadow alerts if ACTIVE API fails
+- **Button Naming** - Renamed "Dismiss All Notifications" to "Dismiss Alerts" for consistency
+
+### Technical Details
+- Added `_invoke_lambda_with_path_params()` method for v1 API endpoints
+- Added `get_active_alerts()` method to fetch unacknowledged alerts
+- Coordinator converts ACTIVE API list format to dictionary for sensor compatibility
+- Binary sensors (Critical/Warning) now read severity directly from alert data with fallback to notification_metadata
+- Improved error handling and logging for alert operations
+
 ## [2.4.0] - 2026-01-14
 
 ### Added

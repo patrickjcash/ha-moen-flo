@@ -352,6 +352,49 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 # Store notification metadata in device data for sensors to access
                 device_data["notification_metadata"] = self._notification_metadata.get(device_duid, {})
 
+                # Get active alerts from v2 API (replaces shadow alerts)
+                # This provides the same alert list as the mobile app
+                try:
+                    active_alerts_list = await self.client.get_active_alerts()
+
+                    # Filter to this device's alerts
+                    device_alerts = [
+                        alert for alert in active_alerts_list
+                        if str(alert.get("duid")) == str(client_id)
+                    ]
+
+                    # Convert list to dictionary format for sensor compatibility
+                    # Shadow format: {"262": {...}, "218": {...}}
+                    # ACTIVE format: [{...}, {...}] with severity included
+                    alerts_dict = {}
+                    for alert in device_alerts:
+                        alert_id = alert.get("id")
+                        if alert_id:
+                            # Store alert with additional fields from v2 API
+                            alerts_dict[alert_id] = {
+                                "state": alert.get("state"),
+                                "timestamp": alert.get("time"),
+                                "severity": alert.get("severity"),  # Now directly available
+                                "dismiss": alert.get("dismiss"),
+                                "title": alert.get("title"),
+                            }
+
+                    # Override shadow alerts with ACTIVE alerts
+                    device_data["info"]["alerts"] = alerts_dict
+
+                    _LOGGER.debug(
+                        "Updated device %s with %d active alert(s) from v2 API",
+                        device_duid[:8],
+                        len(alerts_dict)
+                    )
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to get active alerts for device %s: %s. Using shadow alerts.",
+                        device_duid,
+                        err
+                    )
+                    # Keep shadow alerts as fallback (already set above)
+
                 data[device_duid] = device_data
 
                 # Implement adaptive polling based on alert state

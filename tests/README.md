@@ -62,7 +62,7 @@ python tests/debug_pump_thresholds.py
 ---
 
 ### test_correct_acknowledge.py
-Working example of alert acknowledgment via API.
+Working example of alert acknowledgment via API (v1 endpoint).
 
 **Usage:**
 ```bash
@@ -71,12 +71,15 @@ python tests/test_correct_acknowledge.py
 ```
 
 **Features:**
-- Demonstrates proper alert acknowledgment workflow
-- Uses numeric client ID (not UUID) for shadow API
+- Demonstrates proper alert acknowledgment workflow using v1 API
+- Uses `fbgpg_alerts_v1_silence_alert_prod` endpoint with pathParameters format
+- Uses numeric client ID (not UUID) as required by v1 API
 - Shows alert state before/after acknowledgment
 - Working reference implementation
 
-**Purpose:** Reference implementation for alert dismissal/acknowledgment functionality.
+**Purpose:** Reference implementation for alert dismissal functionality. This script validates that the v1 silence/acknowledge endpoint successfully removes dismissible alerts from the active alerts list.
+
+**Note:** The v1 `silence_alert` and `acknowledge_alert` endpoints are functionally identical.
 
 ---
 
@@ -122,6 +125,12 @@ MOEN_PASSWORD=your_password
 - **Basin Fullness**: Event-based threshold detection (detects pump ON/OFF from distance changes)
 - **Error Handling**: Improved coordinator error handling prevents multi-hour update gaps
 - **Alert Sensors**: New Critical/Warning binary sensors, Active Alerts count sensor
+
+### v2.4.1 Changes (Alert Dismissal Fix)
+- **Alert Dismissal**: Fixed "Dismiss Alerts" button using correct v1 acknowledge endpoint
+- **Alert Source**: Integration now uses v2 ACTIVE alerts API (matches mobile app behavior)
+- **API Discovery**: Identified that `fbgpg_alerts_v1_acknowledge_alert_prod` with pathParameters is the correct dismissal method
+- **Endpoint Behavior**: ACTIVE endpoint returns all unacknowledged alerts, CURRENT endpoint returns only dismissible inactive alerts
 
 ## Test Output Files
 

@@ -177,6 +177,95 @@ class MoenFloNABClient:
             _LOGGER.error(f"Network error invoking {function_name}: {err}")
             raise MoenFloNABApiError(f"Network error: {err}")
 
+    async def _invoke_lambda_with_path_params(
+        self, function_name: str, path_params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Invoke a Lambda function with pathParameters format.
+
+        This format is required for certain v1 API endpoints like acknowledge_alert.
+
+        Args:
+            function_name: Lambda function name
+            path_params: Path parameters dictionary
+
+        Returns:
+            Response data
+        """
+        await self._ensure_authenticated()
+
+        request_payload = {
+            "parse": True,
+            "escape": True,
+            "fn": function_name,
+            "body": {
+                "pathParameters": path_params
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with self.session.post(
+                INVOKER_URL, json=request_payload, headers=headers
+            ) as response:
+                if response.status == 401:
+                    _LOGGER.warning("Received 401, re-authenticating")
+                    await self.authenticate()
+                    return await self._invoke_lambda_with_path_params(function_name, path_params)
+
+                # Handle 204 No Content (success)
+                if response.status == 204:
+                    return {"success": True, "message": "204 No Content"}
+
+                if response.status != 200:
+                    error_text = await response.text()
+                    _LOGGER.error(
+                        f"Lambda invocation failed: {function_name} - {error_text}"
+                    )
+                    raise MoenFloNABApiError(
+                        f"Lambda invocation failed: {error_text}"
+                    )
+
+                # Handle empty response body
+                response_text = await response.text()
+                if not response_text:
+                    return {"success": True, "message": f"Empty response with status {response.status}"}
+
+                data = await response.json()
+
+                # Parse nested payload structure
+                if data.get("StatusCode") == 200:
+                    payload_val = data.get("Payload")
+
+                    # Handle double-encoded JSON
+                    if isinstance(payload_val, str):
+                        try:
+                            payload_val = json.loads(payload_val)
+                        except:
+                            pass
+
+                    # Handle nested body structure
+                    if isinstance(payload_val, dict) and "body" in payload_val:
+                        inner_body = payload_val["body"]
+                        if isinstance(inner_body, str):
+                            try:
+                                return json.loads(inner_body)
+                            except:
+                                return inner_body
+                        return inner_body
+
+                    return payload_val
+
+                return data
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error(f"Network error invoking {function_name}: {err}")
+            raise MoenFloNABApiError(f"Network error: {err}")
+
     async def get_locations(self) -> List[Dict[str, Any]]:
         """Get list of all locations/houses for the account.
 
@@ -441,8 +530,75 @@ class MoenFloNABClient:
 
         return response if isinstance(response, dict) else {}
 
+    async def get_active_alerts(self) -> list[Dict[str, Any]]:
+        """Get all active (unacknowledged) alerts using the v2 API.
+
+        This endpoint returns ALL unacknowledged alerts (both active and inactive states).
+        This matches the mobile app's notification list behavior.
+
+        After acknowledging an alert, it will disappear from this endpoint if the alert
+        has `dismiss: true`. Alerts with `dismiss: false` cannot be dismissed and require
+        device action or auto-clear.
+
+        Returns:
+            List of active alert objects with fields:
+            - id: Alert ID (e.g., "218", "266")
+            - title: Alert description
+            - state: Alert state (e.g., "active_unlack_unrack_unsuppressed" or "inactive_unlack_unrack_unsuppressed")
+            - dismiss: Boolean indicating if alert can be dismissed
+            - silence: Boolean indicating if alert can be silenced
+            - severity: "critical", "warning", or "info"
+            - time: Timestamp when alert was triggered
+            - duid: Device client ID
+        """
+        response = await self._invoke_lambda(
+            "fbgpg_alerts_v2_get_alerts_active_by_user_prod", {}
+        )
+
+        # Response format: {"alerts": [...]}
+        if isinstance(response, dict) and "alerts" in response:
+            return response["alerts"]
+
+        # Fallback: if it's already a list
+        if isinstance(response, list):
+            return response
+
+        return []
+
+    async def get_current_alerts(self) -> list[Dict[str, Any]]:
+        """Get current dismissible alerts using the v2 API.
+
+        This endpoint returns only DISMISSIBLE INACTIVE alerts.
+        This is a subset of active alerts - specifically alerts that:
+        1. Have `dismiss: true`
+        2. Are in `inactive` state
+
+        The mobile app uses get_active_alerts() instead. This method is kept
+        for compatibility but get_active_alerts() should be used instead.
+
+        Returns:
+            List of current alert objects (dismissible inactive alerts only)
+        """
+        response = await self._invoke_lambda(
+            "fbgpg_alerts_v2_get_alerts_current_by_user_prod", {}
+        )
+
+        # Response format: {"alerts": [...]}
+        if isinstance(response, dict) and "alerts" in response:
+            return response["alerts"]
+
+        # Fallback: if it's already a list
+        if isinstance(response, list):
+            return response
+
+        return []
+
     async def acknowledge_alert(self, client_id: int, alert_id: str) -> bool:
         """Acknowledge/dismiss a specific alert.
+
+        Uses the v1 acknowledge endpoint with pathParameters format.
+        This is the correct method that actually removes dismissible alerts
+        from the active alerts list.
 
         Args:
             client_id: Numeric device client ID
@@ -451,16 +607,14 @@ class MoenFloNABClient:
         Returns:
             True if acknowledgement was successful, False otherwise
         """
-        # Try to update the shadow to acknowledge the alert
-        # This may set the alert to "acked" or "suppressed" state
-        payload = {
-            "clientId": client_id,
-            "alertAck": alert_id
-        }
-
         try:
-            response = await self._invoke_lambda(
-                "smartwater-app-shadow-api-prod-update", payload
+            # Use v1 acknowledge endpoint with pathParameters format
+            response = await self._invoke_lambda_with_path_params(
+                "fbgpg_alerts_v1_acknowledge_alert_prod",
+                {
+                    "duid": str(client_id),
+                    "alertEventId": alert_id
+                }
             )
             _LOGGER.debug(f"Acknowledged alert {alert_id}: {response}")
             return True
@@ -469,7 +623,12 @@ class MoenFloNABClient:
             return False
 
     async def dismiss_all_alerts(self, client_id: int) -> Dict[str, bool]:
-        """Dismiss all active alerts for a device.
+        """Dismiss all unacknowledged alerts for a device.
+
+        This uses the v2 ACTIVE endpoint which returns all unacknowledged alerts
+        (matching the mobile app's notification list behavior). Only alerts with
+        `dismiss: true` can be dismissed. Alerts with `dismiss: false` require
+        device action or will auto-clear.
 
         Args:
             client_id: Numeric device client ID
@@ -477,28 +636,40 @@ class MoenFloNABClient:
         Returns:
             Dictionary mapping alert IDs to success status
         """
-        # First, get current alerts
-        shadow = await self.get_shadow(client_id)
-        if not shadow or "state" not in shadow:
-            _LOGGER.warning(f"No shadow data for device {client_id}")
+        # Get all active (unacknowledged) alerts from v2 API
+        active_alerts = await self.get_active_alerts()
+
+        if not active_alerts:
+            _LOGGER.info(f"No active alerts to dismiss for device {client_id}")
             return {}
 
-        reported = shadow.get("state", {}).get("reported", {})
-        alerts = reported.get("alerts", {})
+        # Filter alerts for this device (active_alerts includes all devices)
+        device_alerts = [
+            alert for alert in active_alerts
+            if str(alert.get("duid")) == str(client_id) or str(alert.get("clientId")) == str(client_id)
+        ]
 
-        if not alerts:
-            _LOGGER.info(f"No alerts to dismiss for device {client_id}")
+        if not device_alerts:
+            _LOGGER.info(f"No active alerts for device {client_id}")
             return {}
 
-        # Attempt to acknowledge each active alert
+        # Attempt to acknowledge each dismissible alert
         results = {}
-        for alert_id, alert_data in alerts.items():
-            state = alert_data.get("state", "")
-            # Only dismiss active alerts
-            if "active" in state and "inactive" not in state:
+        for alert in device_alerts:
+            alert_id = alert.get("id")
+            can_dismiss = alert.get("dismiss", False)
+
+            if can_dismiss:
                 success = await self.acknowledge_alert(client_id, alert_id)
                 results[alert_id] = success
-                _LOGGER.info(f"Alert {alert_id} dismiss: {'success' if success else 'failed'}")
+                _LOGGER.info(
+                    f"Alert {alert_id} (\"{alert.get('title', 'Unknown')}\") dismiss: {'success' if success else 'failed'}"
+                )
+            else:
+                _LOGGER.info(
+                    f"Alert {alert_id} (\"{alert.get('title', 'Unknown')}\") cannot be dismissed (dismiss=false)"
+                )
+                results[alert_id] = False
 
         return results
 
