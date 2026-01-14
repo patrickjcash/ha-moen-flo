@@ -5,6 +5,32 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] - 2026-01-14
+
+### Fixed
+- **Alert Sensor Logic** - Fixed alert sensors not matching mobile app behavior:
+  - Active Alerts sensor now correctly counts ALL unacknowledged alerts (was only counting alerts with active conditions)
+  - Warning Alerts binary sensor now triggers on unacknowledged warning-severity alerts (was incorrectly OFF)
+  - Critical Alerts binary sensor now triggers on unacknowledged critical-severity alerts
+  - Root cause: Integration was checking for `"active" in state` but should check for `"unlack" in state`
+  - Mobile app shows all `unlack` (unacknowledged) alerts regardless of whether condition is currently active or inactive
+  - Example: "High Water Level" alert with state `inactive_unlack` now correctly shows as active (condition resolved but not yet dismissed)
+
+### Changed
+- **Flood Risk Sensor** - Simplified to match mobile app logic:
+  - Now ONLY checks `droplet.floodRisk` field from device (previously also checked for any active alerts)
+  - Removed confusing behavior where any alert would trigger flood risk sensor
+  - Sensor now purely reflects device's flood risk assessment: unknown, low, medium, high, critical
+  - More predictable behavior that matches what users see in mobile app
+
+### Technical Details
+- Changed alert state check from `"active" in state and "inactive" not in state` to `"unlack" in state`
+- Updated Active Alerts sensor (sensor.py) count logic and attributes categorization
+- Updated Warning Alerts binary sensor (binary_sensor.py) is_on and extra_state_attributes methods
+- Updated Critical Alerts binary sensor (binary_sensor.py) is_on and extra_state_attributes methods
+- Simplified Flood Risk binary sensor (binary_sensor.py) to remove alert-checking logic
+- Alert state semantics: `active`/`inactive` = condition occurring, `unlack`/`lack` = acknowledged status
+
 ## [2.4.1] - 2026-01-14
 
 ### Fixed

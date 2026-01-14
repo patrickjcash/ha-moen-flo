@@ -30,9 +30,11 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 
 📊 **Enhanced Alert Organization** - Better filtering and automation!
 
-- **Active Alerts** sensor shows count (replaces "Last Alert" with random descriptions)
-- **Critical Alerts** binary sensor triggers on critical severity alerts
-- **Warning Alerts** binary sensor triggers on warning severity alerts
+- **Active Alerts** sensor shows count of all unacknowledged alerts (matches mobile app)
+- **Critical Alerts** binary sensor triggers on unacknowledged critical-severity alerts
+- **Warning Alerts** binary sensor triggers on unacknowledged warning-severity alerts
+- **Flood Risk** sensor simplified to match device's flood risk assessment only
+- Alert sensors now correctly count alerts that are resolved but not yet dismissed
 - All alert details available as sensor attributes for custom dashboards
 
 Plus all the features from v2.3.x:
@@ -73,7 +75,9 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
   - **See [Viewing Pump Volume Statistics](#viewing-pump-volume-statistics) below for access instructions**
 
 ### Binary Sensors
-- **Flood Risk** - Alerts when water level reaches critical thresholds
+- **Flood Risk** - Reflects device's flood risk assessment (unknown, low, medium, high, critical)
+- **Critical Alerts** - Triggers when critical-severity unacknowledged alerts are present
+- **Warning Alerts** - Triggers when warning-severity unacknowledged alerts are present
 - **Water Detection** - Detects water via the remote sensing cable (moisture sensor)
 
 ### Diagnostic Sensors

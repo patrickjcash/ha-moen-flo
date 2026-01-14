@@ -52,8 +52,9 @@ tests/archive/
 *.key
 credentials.json
 
-# Deployment-specific files (contains private server info)
+# Deployment-specific files (contains private server info and internal process docs)
 DEPLOYMENT.md
+RELEASE.md
 
 # OS
 .DS_Store

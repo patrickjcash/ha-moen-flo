@@ -152,30 +152,19 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
     def is_on(self) -> bool:
         """Return true if there is a flood risk.
 
-        This sensor triggers when:
-        - droplet.floodRisk is set to a value other than "unknown"
-        - ANY active alert exists (pump failures, water detection, etc.)
+        This sensor reflects the device's flood risk assessment from the
+        droplet.floodRisk field. Possible values: unknown, low, medium, high, critical.
 
-        Alert examples: 258=Primary Pump Failed, 260=Backup Pump Failed,
-                       250=Water Detected, 254=Critical Flood
+        The sensor is ON when floodRisk is anything other than "unknown".
+        This matches the mobile app's flood risk display logic.
         """
         info = self.device_data.get("info", {})
         droplet = info.get("droplet", {})
 
-        # Check droplet flood risk status
+        # Check droplet flood risk status (matches app logic)
         flood_risk = droplet.get("floodRisk")
         if flood_risk and flood_risk != "unknown":
             return True
-
-        # Check for ANY active alerts
-        alerts = info.get("alerts")
-        if isinstance(alerts, dict):
-            for alert_id, alert_data in alerts.items():
-                if isinstance(alert_data, dict):
-                    state = alert_data.get("state", "")
-                    # Alert is active if state contains "active" and NOT "inactive"
-                    if "active" in state and "inactive" not in state:
-                        return True
 
         return False
 
@@ -184,7 +173,7 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
         """Return additional attributes."""
         info = self.device_data.get("info", {})
         droplet = info.get("droplet", {})
-        
+
         attrs = {
             "water_level_mm": info.get("crockTofDistance"),
             "water_trend": droplet.get("trend"),  # rising/stable/receding
@@ -192,17 +181,7 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
             "primary_pump_state": droplet.get("primaryState"),
             "backup_pump_state": droplet.get("backupState"),
         }
-        
-        # Add active alert IDs
-        alerts = info.get("alerts")
-        if isinstance(alerts, dict):
-            active_alert_ids = [
-                aid for aid, alert in alerts.items()
-                if isinstance(alert, dict) and "active" in alert.get("state", "")
-            ]
-            if active_alert_ids:
-                attrs["active_alert_ids"] = active_alert_ids
-        
+
         return {k: v for k, v in attrs.items() if v is not None}
 
 
@@ -327,7 +306,7 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
 
     @property
     def is_on(self) -> bool:
-        """Return true if there are any active critical alerts."""
+        """Return true if there are any unacknowledged critical alerts."""
         info = self.device_data.get("info", {})
         alerts = info.get("alerts", {})
 
@@ -336,8 +315,8 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
 
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            # Check if alert is active (not inactive)
-            if "active" in state and "inactive" not in state:
+            # Check if alert is unacknowledged (matches mobile app behavior)
+            if "unlack" in state:
                 # Get severity directly from alert (v2 API provides this)
                 severity = alert_data.get("severity", "").lower()
 
@@ -363,7 +342,8 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
 
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            if "active" in state and "inactive" not in state:
+            # Check if alert is unacknowledged (matches mobile app behavior)
+            if "unlack" in state:
                 # Get severity directly from alert (v2 API)
                 severity = alert_data.get("severity", "").lower()
                 title = alert_data.get("title")
@@ -411,7 +391,7 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
 
     @property
     def is_on(self) -> bool:
-        """Return true if there are any active warning alerts."""
+        """Return true if there are any unacknowledged warning alerts."""
         info = self.device_data.get("info", {})
         alerts = info.get("alerts", {})
 
@@ -420,8 +400,8 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
 
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            # Check if alert is active (not inactive)
-            if "active" in state and "inactive" not in state:
+            # Check if alert is unacknowledged (matches mobile app behavior)
+            if "unlack" in state:
                 # Get severity directly from alert (v2 API provides this)
                 severity = alert_data.get("severity", "").lower()
 
@@ -447,7 +427,8 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
 
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            if "active" in state and "inactive" not in state:
+            # Check if alert is unacknowledged (matches mobile app behavior)
+            if "unlack" in state:
                 # Get severity directly from alert (v2 API)
                 severity = alert_data.get("severity", "").lower()
                 title = alert_data.get("title")

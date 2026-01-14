@@ -126,6 +126,13 @@ MOEN_PASSWORD=your_password
 - **Error Handling**: Improved coordinator error handling prevents multi-hour update gaps
 - **Alert Sensors**: New Critical/Warning binary sensors, Active Alerts count sensor
 
+### v2.4.2 Changes (Alert Sensor Logic Fix)
+- **Alert Sensors**: Fixed alert sensors to match mobile app behavior
+- **State Check Logic**: Changed from checking `"active" in state` to `"unlack" in state`
+- **Key Insight**: Mobile app shows ALL `unlack` (unacknowledged) alerts, regardless of active/inactive condition status
+- **Flood Risk**: Simplified to only check `droplet.floodRisk` field, removed custom alert-checking logic
+- **Example**: Alert with state `inactive_unlack` (condition resolved, not dismissed) now correctly shows as active
+
 ### v2.4.1 Changes (Alert Dismissal Fix)
 - **Alert Dismissal**: Fixed "Dismiss Alerts" button using correct v1 acknowledge endpoint
 - **Alert Source**: Integration now uses v2 ACTIVE alerts API (matches mobile app behavior)
