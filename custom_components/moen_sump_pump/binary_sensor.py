@@ -55,6 +55,12 @@ async def async_setup_entry(
         # Water Detection Sensor (remote sensing cable)
         entities.append(MoenFloNABWaterDetectionSensor(coordinator, device_duid, device_name))
 
+        # Critical Alerts Sensor
+        entities.append(MoenFloNABCriticalAlertSensor(coordinator, device_duid, device_name))
+
+        # Warning Alerts Sensor
+        entities.append(MoenFloNABWarningAlertSensor(coordinator, device_duid, device_name))
+
     async_add_entities(entities)
 
 
@@ -301,3 +307,147 @@ class MoenFloNABWaterDetectionSensor(MoenFloNABBinarySensorBase):
                 }
 
         return {}
+
+
+class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
+    """Binary sensor for critical severity alerts."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_critical_alerts"
+        self._attr_name = f"{device_name} Critical Alerts"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if there are any active critical alerts."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+
+        if not alerts:
+            return False
+
+        # Get notification metadata for severity info
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            # Check if alert is active
+            if "active" in state and "inactive" not in state:
+                # Check severity from metadata
+                if alert_id in notification_metadata:
+                    severity = notification_metadata[alert_id].get("severity", "").lower()
+                    if severity == "critical":
+                        return True
+
+        return False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
+        critical_alerts = []
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            if "active" in state and "inactive" not in state:
+                if alert_id in notification_metadata:
+                    severity = notification_metadata[alert_id].get("severity", "").lower()
+                    if severity == "critical":
+                        critical_alerts.append({
+                            "id": alert_id,
+                            "description": notification_metadata[alert_id].get("title", f"Alert {alert_id}"),
+                            "timestamp": alert_data.get("timestamp"),
+                            "state": state,
+                        })
+
+        attrs = {
+            "critical_alert_count": len(critical_alerts),
+        }
+
+        if critical_alerts:
+            attrs["critical_alerts"] = critical_alerts
+
+        return attrs
+
+
+class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
+    """Binary sensor for warning severity alerts."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_warning_alerts"
+        self._attr_name = f"{device_name} Warning Alerts"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if there are any active warning alerts."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+
+        if not alerts:
+            return False
+
+        # Get notification metadata for severity info
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            # Check if alert is active
+            if "active" in state and "inactive" not in state:
+                # Check severity from metadata
+                if alert_id in notification_metadata:
+                    severity = notification_metadata[alert_id].get("severity", "").lower()
+                    if severity == "warning":
+                        return True
+
+        return False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        info = self.device_data.get("info", {})
+        alerts = info.get("alerts", {})
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
+        warning_alerts = []
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            if "active" in state and "inactive" not in state:
+                if alert_id in notification_metadata:
+                    severity = notification_metadata[alert_id].get("severity", "").lower()
+                    if severity == "warning":
+                        warning_alerts.append({
+                            "id": alert_id,
+                            "description": notification_metadata[alert_id].get("title", f"Alert {alert_id}"),
+                            "timestamp": alert_data.get("timestamp"),
+                            "state": state,
+                        })
+
+        attrs = {
+            "warning_alert_count": len(warning_alerts),
+        }
+
+        if warning_alerts:
+            attrs["warning_alerts"] = warning_alerts
+
+        return attrs

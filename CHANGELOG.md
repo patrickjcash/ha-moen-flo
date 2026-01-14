@@ -5,6 +5,41 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-01-14
+
+### Added
+- **Persistent Pump Threshold Detection** - Basin Fullness sensor now uses event-based threshold learning:
+  - Detects pump ON/OFF events from water distance changes (±15mm in <5 min)
+  - Stores thresholds persistently with weighted averaging (80% old, 20% new)
+  - Works across days/weeks between pump cycles, not limited to recent readings
+  - Replaces unreliable 100-reading rolling window approach
+- **New Diagnostic Sensors** - Added calculated pump threshold sensors:
+  - `Pump ON Distance (Calculated)` - Water distance when basin is full (pump starts)
+  - `Pump OFF Distance (Calculated)` - Water distance when basin is empty (pump stops)
+  - Shows calculation method (event_detection vs min_max_fallback) in attributes
+  - Displays event count and last event timestamp for transparency
+- **Improved Alert Sensors** - Enhanced alert monitoring and filtering:
+  - Renamed "Last Alert" to "Active Alerts" - now shows count instead of description
+  - All active alerts with details available as sensor attributes
+  - New `Critical Alerts` binary sensor - triggers on critical severity alerts
+  - New `Warning Alerts` binary sensor - triggers on warning severity alerts
+  - Better for automations and dashboard organization
+
+### Fixed
+- **Critical: Coordinator Update Failures** - Fixed unhandled authentication errors causing 7+ hour update gaps:
+  - MQTT reconnection authentication failures now properly caught and handled
+  - Falls back to REST API if reauthentication fails instead of stopping updates
+  - Prevents exponential backoff lockup when network issues occur
+  - Adds detailed error logging for troubleshooting
+- **Basin Fullness Calculation** - Fixed erratic behavior where sensor would jump to 100%:
+  - Old approach used min/max from 100 readings, causing threshold shifts with new extremes
+  - New event-based detection provides stable, long-term threshold learning
+  - Thresholds now adapt gradually over time instead of shifting with each new reading
+
+### Changed
+- Basin Fullness calculation method changed from rolling window to persistent event detection
+- Active Alerts sensor now returns integer count instead of text description (breaking change for existing automations)
+
 ## [2.3.3] - 2026-01-13
 
 ### Fixed

@@ -60,6 +60,16 @@ async def async_setup_entry(
             MoenFloNABBasinFullnessSensor(coordinator, device_duid, device_name)
         )
 
+        # Pump ON Distance Sensor (calculated)
+        entities.append(
+            MoenFloNABPumpOnDistanceSensor(coordinator, device_duid, device_name)
+        )
+
+        # Pump OFF Distance Sensor (calculated)
+        entities.append(
+            MoenFloNABPumpOffDistanceSensor(coordinator, device_duid, device_name)
+        )
+
         # Temperature Sensor
         entities.append(
             MoenFloNABTemperatureSensor(coordinator, device_duid, device_name)
@@ -259,6 +269,108 @@ class MoenFloNABBasinFullnessSensor(MoenFloNABSensorBase):
             "pump_off_distance_mm": pump_thresholds.get("pump_off_distance"),
             "observation_count": pump_thresholds.get("observation_count", 0),
         }
+
+        return {k: v for k, v in attrs.items() if v is not None}
+
+
+class MoenFloNABPumpOnDistanceSensor(MoenFloNABSensorBase):
+    """Pump ON distance sensor - calculated from detected pump events."""
+
+    _attr_device_class = SensorDeviceClass.DISTANCE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
+    _attr_suggested_display_precision = 0
+    _attr_icon = "mdi:gauge-full"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_pump_on_distance"
+        self._attr_name = f"{device_name} Pump ON Distance (Calculated)"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the pump ON distance threshold in mm.
+
+        This is the water distance when the basin is full and pump starts.
+        Lower distance = closer to sensor = fuller basin.
+        """
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+        return pump_thresholds.get("pump_on_distance")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from datetime import datetime
+
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+
+        attrs = {
+            "event_count": pump_thresholds.get("on_event_count", 0),
+            "calculation_method": "event_detection" if pump_thresholds.get("on_event_count", 0) > 0 else "min_max_fallback",
+        }
+
+        # Add last event timestamp if available
+        last_event = pump_thresholds.get("last_on_event")
+        if last_event:
+            attrs["last_event"] = datetime.fromtimestamp(last_event).isoformat()
+
+        return {k: v for k, v in attrs.items() if v is not None}
+
+
+class MoenFloNABPumpOffDistanceSensor(MoenFloNABSensorBase):
+    """Pump OFF distance sensor - calculated from detected pump events."""
+
+    _attr_device_class = SensorDeviceClass.DISTANCE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
+    _attr_suggested_display_precision = 0
+    _attr_icon = "mdi:gauge-empty"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_pump_off_distance"
+        self._attr_name = f"{device_name} Pump OFF Distance (Calculated)"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the pump OFF distance threshold in mm.
+
+        This is the water distance when the basin is empty and pump stops.
+        Higher distance = farther from sensor = emptier basin.
+        """
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+        return pump_thresholds.get("pump_off_distance")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from datetime import datetime
+
+        pump_thresholds = self.device_data.get("pump_thresholds", {})
+
+        attrs = {
+            "event_count": pump_thresholds.get("off_event_count", 0),
+            "calculation_method": "event_detection" if pump_thresholds.get("off_event_count", 0) > 0 else "min_max_fallback",
+        }
+
+        # Add last event timestamp if available
+        last_event = pump_thresholds.get("last_off_event")
+        if last_event:
+            attrs["last_event"] = datetime.fromtimestamp(last_event).isoformat()
 
         return {k: v for k, v in attrs.items() if v is not None}
 
@@ -572,9 +684,10 @@ class MoenFloNABWiFiSignalSensor(MoenFloNABSensorBase):
 
 
 class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
-    """Last active alert sensor showing most recent alert."""
+    """Active alerts count sensor with all alert details in attributes."""
 
     _attr_icon = "mdi:alert-circle"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -585,51 +698,26 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_last_alert"
-        self._attr_name = f"{device_name} Last Alert"
+        self._attr_name = f"{device_name} Active Alerts"
 
     @property
-    def native_value(self) -> str | None:
-        """Return the most recent active alert description."""
+    def native_value(self) -> int:
+        """Return the count of active alerts."""
         info = self.device_data.get("info", {})
         alerts = info.get("alerts", {})
 
         if not alerts:
-            return "No alerts"
+            return 0
 
-        # Find the most recent active alert
-        most_recent_active = None
-        most_recent_time = None
-
+        # Count active alerts
+        active_count = 0
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            timestamp_str = alert_data.get("timestamp")
-
             # Check if alert is active
             if "active" in state and "inactive" not in state:
-                try:
-                    # Parse timestamp
-                    timestamp = datetime.fromisoformat(
-                        timestamp_str.replace("Z", "+00:00")
-                    )
-                    # Track most recent
-                    if most_recent_time is None or timestamp > most_recent_time:
-                        most_recent_time = timestamp
-                        most_recent_active = alert_id
-                except (ValueError, AttributeError):
-                    pass
+                active_count += 1
 
-        # Return description of most recent active alert
-        if most_recent_active:
-            # Use dynamic notification metadata from API if available
-            notification_metadata = self.device_data.get("notification_metadata", {})
-            if most_recent_active in notification_metadata:
-                description = notification_metadata[most_recent_active].get("title", f"Alert {most_recent_active}")
-            else:
-                # Fallback to hardcoded mapping
-                description = ALERT_CODES.get(most_recent_active, f"Alert {most_recent_active}")
-            return description
-
-        return "No active alerts"
+        return active_count
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

@@ -13,37 +13,34 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v2.3.0
+## What's New in v2.4.0
 
-🏘️ **Multiple Device & Location Support** - Manage multiple sump pump monitors across multiple houses!
+🎯 **Intelligent Basin Fullness** - Persistent event-based threshold learning!
 
-Key features:
-- **Multiple Devices**: Each sump pump monitor gets its own complete set of sensors
-- **Multiple Houses**: Device names automatically include location (e.g., "My Home Sump Pump Monitor")
-- **Smart Filtering**: Only shows sump pump monitors, ignores other Moen devices
+- Automatically detects pump ON/OFF events from water distance changes
+- Learns thresholds over time with weighted averaging (adapts to seasonal changes)
+- Works across days/weeks between pump cycles (not limited to recent readings)
+- Two new diagnostic sensors show calculated pump ON/OFF distances
 
-🔔 **Dynamic Notification Descriptions** - Notification names now fetched from API!
+🛡️ **Improved Reliability** - Better error handling prevents update gaps!
 
-- No more hardcoding - pulls titles directly from Moen's event logs
-- Always matches current Moen app notification names
-- Automatically updates when Moen adds new notification types
-- Includes severity levels (critical, warning, info)
+- Authentication failures during MQTT reconnection no longer stop all updates
+- Graceful fallback to REST API when MQTT issues occur
+- Prevents multi-hour coordinator lockups from network hiccups
 
-⏱️ **New Diagnostic Sensors**:
+📊 **Enhanced Alert Organization** - Better filtering and automation!
 
-- **Polling Period**: Shows current adaptive polling interval
-- **Pump Cycles Last 15 Minutes**: Tracks recent pump activity
+- **Active Alerts** sensor shows count (replaces "Last Alert" with random descriptions)
+- **Critical Alerts** binary sensor triggers on critical severity alerts
+- **Warning Alerts** binary sensor triggers on warning severity alerts
+- All alert details available as sensor attributes for custom dashboards
 
-🔘 **Dismiss All Notifications Button** - Dismiss active alerts right from Home Assistant!
-
-📊 **Enhanced Alert Codes** - 15+ notification types discovered and properly mapped
-
-Plus all the features from v1.8.x:
-- Long-term statistics with Energy Dashboard integration
-- Historical data backfill (weeks of pump cycles)
-- Per-cycle granularity with accurate timestamps
-- Water Distance sensor with detailed attributes
-- Comprehensive alert monitoring
+Plus all the features from v2.3.x:
+- Multiple device & location support
+- Dynamic notification descriptions from API
+- MQTT connection stability with automatic credential refresh
+- Pump cycles data with statistics integration
+- Comprehensive monitoring and diagnostics
 
 See the [CHANGELOG](CHANGELOG.md) for complete details.
 

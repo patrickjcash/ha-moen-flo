@@ -87,6 +87,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._first_refresh = True  # Track if this is the first data fetch
         self._water_distance_history = {}  # Track water distance readings per device
         self._notification_metadata = {}  # Cache notification ID to title mappings per device
+        self._pump_thresholds = {}  # Persistent pump on/off thresholds per device
+        self._previous_distance = {}  # Track previous water distance for event detection
+        self._last_distance_time = {}  # Track timestamp of last distance reading
 
     async def _async_update_data(self):
         """Fetch data from API."""
@@ -163,12 +166,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 elif mqtt_client.needs_reconnect():
                     # Credentials expired, need to reconnect with fresh ID token
                     _LOGGER.info("MQTT credentials expired for device %s, reconnecting", device_duid)
-                    # Ensure we have fresh tokens
-                    await self.client.authenticate()
-                    # Reconnect with new ID token
-                    reconnected = await mqtt_client.reconnect_with_new_token(self.client._id_token)
-                    if not reconnected:
-                        _LOGGER.warning("Failed to reconnect MQTT for device %s, using REST fallback", device_duid)
+                    try:
+                        # Ensure we have fresh tokens
+                        await self.client.authenticate()
+                        # Reconnect with new ID token
+                        reconnected = await mqtt_client.reconnect_with_new_token(self.client._id_token)
+                        if not reconnected:
+                            _LOGGER.warning("Failed to reconnect MQTT for device %s, using REST fallback", device_duid)
+                            mqtt_client = None
+                            # Remove from cache so we can try fresh connection next time
+                            self.mqtt_clients.pop(device_duid, None)
+                    except Exception as err:
+                        _LOGGER.error("Failed to reauthenticate during MQTT reconnect for device %s: %s. Using REST fallback", device_duid, err)
                         mqtt_client = None
                         # Remove from cache so we can try fresh connection next time
                         self.mqtt_clients.pop(device_duid, None)
@@ -216,6 +225,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                             # Track water distance for threshold calculation
                             distance = reported.get("crockTofDistance")
                             if distance is not None:
+                                # Detect pump events for threshold learning
+                                self._detect_pump_events(device_duid, distance)
+
                                 if device_duid not in self._water_distance_history:
                                     self._water_distance_history[device_duid] = []
                                 self._water_distance_history[device_duid].append(distance)
@@ -425,14 +437,94 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 alert_note
             )
 
-    def _calculate_pump_thresholds(self, device_duid: str) -> dict:
-        """Calculate pump on/off distance thresholds from observed water distances.
+    def _detect_pump_events(self, device_duid: str, current_distance: float) -> None:
+        """Detect pump ON/OFF events from water distance changes.
 
-        SIMPLE APPROACH:
-        Uses the min and max observed water distances from recent readings:
-        - pump_on_distance: Minimum observed distance (basin full, pump about to start)
-        - pump_off_distance: Maximum observed distance (basin empty, pump just finished)
-        - Basin Fullness: 100% at pump_on, 0% at pump_off, linear interpolation between
+        Uses persistent thresholds that adapt over time based on detected pump events.
+        This approach works across long time periods (days/weeks) between pump cycles.
+
+        Args:
+            device_duid: Device UUID
+            current_distance: Current water distance in mm
+        """
+        import time
+
+        previous_distance = self._previous_distance.get(device_duid)
+        last_time = self._last_distance_time.get(device_duid, 0)
+        current_time = time.time()
+
+        # Store current reading for next iteration
+        self._previous_distance[device_duid] = current_distance
+        self._last_distance_time[device_duid] = current_time
+
+        # Need previous reading to detect changes
+        if previous_distance is None:
+            return
+
+        # Calculate change
+        distance_change = current_distance - previous_distance
+        time_delta = current_time - last_time
+
+        # Ignore if too much time passed (stale comparison)
+        if time_delta > 600:  # 10 minutes
+            return
+
+        # Initialize thresholds if not present
+        if device_duid not in self._pump_thresholds:
+            self._pump_thresholds[device_duid] = {
+                "pump_on_distance": None,
+                "pump_off_distance": None,
+                "on_event_count": 0,
+                "off_event_count": 0,
+                "last_on_event": None,
+                "last_off_event": None,
+            }
+
+        thresholds = self._pump_thresholds[device_duid]
+
+        # Detect PUMP ON event: water distance drops significantly (basin filling)
+        # Water gets closer to sensor = distance decreases
+        if distance_change < -15 and time_delta < 300:  # 15mm drop in < 5 min
+            old_on = thresholds.get("pump_on_distance")
+            if old_on is None:
+                new_on = int(current_distance)
+                _LOGGER.info("Device %s: Detected first pump ON event at %d mm", device_duid, new_on)
+            else:
+                # Weighted average: 80% old, 20% new
+                new_on = int(0.8 * old_on + 0.2 * current_distance)
+                _LOGGER.debug("Device %s: Pump ON event detected, updating threshold %d → %d mm",
+                            device_duid, old_on, new_on)
+
+            thresholds["pump_on_distance"] = new_on
+            thresholds["on_event_count"] = thresholds.get("on_event_count", 0) + 1
+            thresholds["last_on_event"] = current_time
+
+        # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
+        # Water gets farther from sensor = distance increases
+        elif distance_change > 15 and time_delta < 300:  # 15mm jump in < 5 min
+            old_off = thresholds.get("pump_off_distance")
+            if old_off is None:
+                new_off = int(current_distance)
+                _LOGGER.info("Device %s: Detected first pump OFF event at %d mm", device_duid, new_off)
+            else:
+                # Weighted average: 80% old, 20% new
+                new_off = int(0.8 * old_off + 0.2 * current_distance)
+                _LOGGER.debug("Device %s: Pump OFF event detected, updating threshold %d → %d mm",
+                            device_duid, old_off, new_off)
+
+            thresholds["pump_off_distance"] = new_off
+            thresholds["off_event_count"] = thresholds.get("off_event_count", 0) + 1
+            thresholds["last_off_event"] = current_time
+
+    def _calculate_pump_thresholds(self, device_duid: str) -> dict:
+        """Return pump on/off distance thresholds from persistent event detection.
+
+        PERSISTENT APPROACH:
+        Uses event-based detection to learn pump thresholds over time:
+        - Detects significant water distance drops (pump ON) and jumps (pump OFF)
+        - Stores thresholds persistently with weighted averaging
+        - Works across days/weeks between pump cycles
+        - Falls back to simple min/max if no events detected yet
 
         Args:
             device_duid: Device UUID
@@ -440,35 +532,40 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             Dictionary with pump_on_distance, pump_off_distance, and observation count
         """
+        # Try persistent thresholds first
+        if device_duid in self._pump_thresholds:
+            thresholds = self._pump_thresholds[device_duid]
+            pump_on = thresholds.get("pump_on_distance")
+            pump_off = thresholds.get("pump_off_distance")
+
+            if pump_on is not None and pump_off is not None and pump_off > pump_on:
+                return {
+                    "pump_on_distance": pump_on,
+                    "pump_off_distance": pump_off,
+                    "observation_count": thresholds.get("on_event_count", 0) + thresholds.get("off_event_count", 0),
+                    "on_event_count": thresholds.get("on_event_count", 0),
+                    "off_event_count": thresholds.get("off_event_count", 0),
+                }
+
+        # Fallback: use simple min/max from recent history
         history = self._water_distance_history.get(device_duid, [])
 
         if not history or len(history) < 5:
-            _LOGGER.debug("Insufficient water distance readings for device %s (%d readings)",
-                         device_duid, len(history))
             return {}
 
-        # Simple: min distance = basin full (pump on), max distance = basin empty (pump off)
         pump_on_distance = min(history)
         pump_off_distance = max(history)
 
-        # Need meaningful difference between min and max
-        if pump_off_distance - pump_on_distance < 10:  # Less than 10mm difference
-            _LOGGER.debug("Water distance range too small for device %s (%.1f mm)",
-                         device_duid, pump_off_distance - pump_on_distance)
+        # Need meaningful difference
+        if pump_off_distance - pump_on_distance < 10:
             return {}
-
-        _LOGGER.debug(
-            "Calculated pump thresholds for %s: ON=%d mm (min), OFF=%d mm (max) from %d readings",
-            device_duid,
-            pump_on_distance,
-            pump_off_distance,
-            len(history),
-        )
 
         return {
             "pump_on_distance": int(pump_on_distance),
             "pump_off_distance": int(pump_off_distance),
             "observation_count": len(history),
+            "on_event_count": 0,
+            "off_event_count": 0,
         }
 
     async def disconnect_mqtt(self):
