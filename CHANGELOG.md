@@ -5,6 +5,30 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] - 2026-01-14
+
+### Fixed
+- **Pump ON/OFF Distance Sensors Not Updating** - Fixed calculated pump threshold sensors remaining flat:
+  - Root cause: Event detection (`_detect_pump_events`) was only called in MQTT path but integration was falling back to REST API
+  - Removed REST API fallback entirely - integration now requires MQTT for telemetry
+  - Simplified telemetry logic to be MQTT-only, ensuring event detection always runs
+  - Pump ON/OFF distance sensors will now update properly as water distance changes are detected via MQTT
+  - Basin Fullness sensor will now calculate correctly using updated thresholds
+
+### Changed
+- **MQTT-Only Telemetry** - Removed REST API fallback for shadow data:
+  - Integration now skips device updates if MQTT is not connected (with warning)
+  - More reliable behavior - either MQTT works or you get clear warnings
+  - Simplifies code and prevents silent failures where thresholds never update
+  - MQTT connection is now effectively required for the integration to function
+
+### Technical Details
+- Removed REST fallback path from telemetry update cycle (lines 246-267 in __init__.py)
+- Changed logic to check `if not mqtt_client` at start and skip with `continue`
+- Event detection now always runs when MQTT data is received
+- Pump thresholds update on ±15mm water distance changes within 5 minutes
+- Added clear warning logs when MQTT is not connected
+
 ## [2.4.2] - 2026-01-14
 
 ### Fixed

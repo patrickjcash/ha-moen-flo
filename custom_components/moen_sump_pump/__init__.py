@@ -182,93 +182,77 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         # Remove from cache so we can try fresh connection next time
                         self.mqtt_clients.pop(device_duid, None)
 
-                # Get live telemetry via MQTT or REST fallback
+                # Get live telemetry via MQTT
                 try:
-                    if mqtt_client and mqtt_client.is_connected:
-                        # Trigger fresh sensor reading via MQTT
-                        await mqtt_client.trigger_sensor_update("sens_on")
-                        # Wait for device to take reading and update shadow (~2 seconds)
-                        await asyncio.sleep(2)
-                        # Request shadow via MQTT to get the fresh reading
-                        await mqtt_client.request_shadow()
-                        # Wait for shadow response
-                        await asyncio.sleep(1)
+                    if not mqtt_client or not mqtt_client.is_connected:
+                        _LOGGER.warning("MQTT not connected for device %s, skipping telemetry update", device_duid)
+                        continue
 
-                        # Stop streaming to preserve battery
-                        await mqtt_client.trigger_sensor_update("updates_off")
+                    # Trigger fresh sensor reading via MQTT
+                    await mqtt_client.trigger_sensor_update("sens_on")
+                    # Wait for device to take reading and update shadow (~2 seconds)
+                    await asyncio.sleep(2)
+                    # Request shadow via MQTT to get the fresh reading
+                    await mqtt_client.request_shadow()
+                    # Wait for shadow response
+                    await asyncio.sleep(1)
 
-                        # Get shadow data from MQTT client
-                        reported = mqtt_client.last_shadow_data
-                        if reported:
-                            # Merge shadow data into device info
-                            device_data["info"]["crockTofDistance"] = reported.get(
-                                "crockTofDistance", device_data["info"].get("crockTofDistance")
-                            )
-                            device_data["info"]["droplet"] = reported.get(
-                                "droplet", device_data["info"].get("droplet")
-                            )
-                            device_data["info"]["connected"] = reported.get(
-                                "connected", device_data["info"].get("connected")
-                            )
-                            device_data["info"]["wifiRssi"] = reported.get(
-                                "wifiRssi", device_data["info"].get("wifiRssi")
-                            )
-                            device_data["info"]["batteryPercentage"] = reported.get(
-                                "batteryPercentage", device_data["info"].get("batteryPercentage")
-                            )
-                            device_data["info"]["powerSource"] = reported.get(
-                                "powerSource", device_data["info"].get("powerSource")
-                            )
-                            device_data["info"]["alerts"] = reported.get(
-                                "alerts", device_data["info"].get("alerts")
-                            )
-                            # Track water distance for threshold calculation
-                            distance = reported.get("crockTofDistance")
-                            if distance is not None:
-                                # Detect pump events for threshold learning
-                                self._detect_pump_events(device_duid, distance)
+                    # Stop streaming to preserve battery
+                    await mqtt_client.trigger_sensor_update("updates_off")
 
-                                if device_duid not in self._water_distance_history:
-                                    self._water_distance_history[device_duid] = []
-                                self._water_distance_history[device_duid].append(distance)
-                                # Keep last 100 readings
-                                if len(self._water_distance_history[device_duid]) > 100:
-                                    self._water_distance_history[device_duid].pop(0)
+                    # Get shadow data from MQTT client
+                    reported = mqtt_client.last_shadow_data
+                    if not reported:
+                        _LOGGER.warning("No shadow data received from MQTT for device %s", device_duid)
+                        continue
 
-                            _LOGGER.debug(
-                                "Updated device %s with MQTT shadow data (water level: %s mm)",
-                                device_duid,
-                                reported.get("crockTofDistance"),
-                            )
-                        else:
-                            _LOGGER.debug("No shadow data received from MQTT for device %s, using REST fallback", device_duid)
-                    else:
-                        # REST fallback
-                        _LOGGER.debug("Using REST API fallback for device %s", device_duid)
-                        await self.client.update_shadow(client_id, "sens_on")
-                        await asyncio.sleep(0.5)
-                        shadow_data = await self.client.get_shadow(client_id)
-                        # Stop streaming to preserve battery
-                        await self.client.update_shadow(client_id, "updates_off")
-                        if isinstance(shadow_data, dict) and "state" in shadow_data:
-                            reported = shadow_data.get("state", {}).get("reported", {})
-                            if reported:
-                                device_data["info"]["crockTofDistance"] = reported.get("crockTofDistance")
-                                device_data["info"]["droplet"] = reported.get("droplet")
-                                device_data["info"]["connected"] = reported.get("connected")
-                                device_data["info"]["wifiRssi"] = reported.get("wifiRssi")
-                                device_data["info"]["batteryPercentage"] = reported.get("batteryPercentage")
-                                device_data["info"]["powerSource"] = reported.get("powerSource")
-                                device_data["info"]["alerts"] = reported.get("alerts")
-                                _LOGGER.debug(
-                                    "Updated device %s with REST shadow data (water level: %s mm)",
-                                    device_duid,
-                                    reported.get("crockTofDistance"),
-                                )
+                    # Merge shadow data into device info
+                    device_data["info"]["crockTofDistance"] = reported.get(
+                        "crockTofDistance", device_data["info"].get("crockTofDistance")
+                    )
+                    device_data["info"]["droplet"] = reported.get(
+                        "droplet", device_data["info"].get("droplet")
+                    )
+                    device_data["info"]["connected"] = reported.get(
+                        "connected", device_data["info"].get("connected")
+                    )
+                    device_data["info"]["wifiRssi"] = reported.get(
+                        "wifiRssi", device_data["info"].get("wifiRssi")
+                    )
+                    device_data["info"]["batteryPercentage"] = reported.get(
+                        "batteryPercentage", device_data["info"].get("batteryPercentage")
+                    )
+                    device_data["info"]["powerSource"] = reported.get(
+                        "powerSource", device_data["info"].get("powerSource")
+                    )
+                    device_data["info"]["alerts"] = reported.get(
+                        "alerts", device_data["info"].get("alerts")
+                    )
+
+                    # Track water distance for threshold calculation
+                    distance = reported.get("crockTofDistance")
+                    if distance is not None:
+                        # Detect pump events for threshold learning
+                        self._detect_pump_events(device_duid, distance)
+
+                        if device_duid not in self._water_distance_history:
+                            self._water_distance_history[device_duid] = []
+                        self._water_distance_history[device_duid].append(distance)
+                        # Keep last 100 readings
+                        if len(self._water_distance_history[device_duid]) > 100:
+                            self._water_distance_history[device_duid].pop(0)
+
+                    _LOGGER.debug(
+                        "Updated device %s with MQTT shadow data (water level: %s mm)",
+                        device_duid,
+                        reported.get("crockTofDistance"),
+                    )
+
                 except Exception as err:
                     _LOGGER.warning(
                         "Failed to get shadow data for device %s: %s", device_duid, err
                     )
+                    continue
 
                 # Get environment data (temp/humidity) using numeric ID
                 try:
