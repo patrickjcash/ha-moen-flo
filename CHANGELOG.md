@@ -30,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 - Removed `continue` statements from MQTT telemetry section (lines 187-252 in __init__.py)
 - Changed MQTT logic to use nested if/else instead of early exit
-- Pump threshold calculations now execute even without fresh MQTT data
+- **Moved pump threshold calculation to immediately after MQTT section** (line 255)
+- Thresholds now correctly sourced from MQTT water distance readings only
+- Removed incorrect dependency on pump_cycles API for threshold calculation
 - Updated `_update_poll_interval()` to check alert severity (lines 448-468)
 - Checks for `"unlack" in state` to match mobile app behavior
 - Only critical/warning alerts cap polling at 60s; info alerts allow full 10s-300s range

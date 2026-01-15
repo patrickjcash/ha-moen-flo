@@ -251,6 +251,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         "Failed to get shadow data for device %s: %s", device_duid, err
                     )
 
+                # Calculate pump thresholds from water distance history (updated by MQTT above)
+                device_data["pump_thresholds"] = self._calculate_pump_thresholds(device_duid)
+
                 # Get environment data (temp/humidity) using numeric ID
                 try:
                     env_data = await self.client.get_device_environment(client_id)
@@ -281,9 +284,6 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     cycles = await self.client.get_pump_cycles(client_id, limit=limit)
                     device_data["pump_cycles"] = cycles
 
-                    # Calculate pump thresholds from water distance history
-                    device_data["pump_thresholds"] = self._calculate_pump_thresholds(device_duid)
-
                     # Import statistics on first refresh or when we have new cycles
                     if cycles and (self._first_refresh or len(cycles) > 0):
                         device_name = device.get("nickname", f"Sump Pump {device_duid[:8]}")
@@ -299,7 +299,6 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         "Failed to get pump cycles for device %s: %s", device_duid, err
                     )
                     device_data["pump_cycles"] = []
-                    device_data["pump_thresholds"] = {}
 
                 # Get event logs for water detection using UUID
                 # NOTE: Event logs are also used to build notification metadata
