@@ -8,20 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.4.6] - 2026-01-15
 
 ### Fixed
-- **Pump Event Detection Triggering on Slow Drift** - Increased threshold and tightened time window:
-  - Root cause: 50mm threshold was too small, catching slow drift as pump events
-  - Increased threshold from 50mm to 100mm (4 inches) based on real pump cycle data
-  - Added time window bounds: 5 seconds minimum, 10 minutes maximum
-  - Only detects rapid, significant changes (100mm+ in 5s-10min)
-  - Completely ignores noise, oscillations, and gradual drift over hours
-  - Thresholds persist across weeks/months - no dependency on recent readings
+- **Pump Threshold Sensors Updating Incorrectly** - Removed fallback logic causing false updates:
+  - Root cause: Min/max fallback logic was updating thresholds based on slow drift in water level history
+  - Fallback used `min(history)` and `max(history)` from last 100 readings, which changed as water slowly drifted over hours
+  - This caused thresholds to update at random times when there was NO actual pump event
+  - Removed fallback logic entirely - sensors now show "Unknown" until first real pump event detected
+  - Thresholds only update when actual pump events are detected (50mm+ change in 5s-10min)
+  - Prevents spurious threshold updates from gradual drift over hours/days
 
 ### Technical Details
-- Updated event detection in `_detect_pump_events()` (lines 524, 545)
-- Pump ON: requires 100mm drop in 5s-10min window (was 50mm in <5min)
-- Pump OFF: requires 100mm jump in 5s-10min window (was 50mm in <5min)
-- Time window uses range check: `5 <= time_delta <= 600`
-- Prevents both too-fast duplicates and too-slow drift from triggering
+- Removed min/max fallback logic from `_calculate_pump_thresholds()` (lines 594-613)
+- Removed `_water_distance_history` tracking (no longer needed without fallback logic)
+- Removed arbitrary 100-reading history limit that couldn't handle weeks between pump cycles
+- Sensors now return empty dict (Unknown) if no pump events detected yet
+- Event detection uses 50mm threshold with 5s-10min time window
+- Once learned, thresholds persist indefinitely using weighted averaging (80% old, 20% new)
+- Event detection compares consecutive readings only - works regardless of time between pump cycles
 
 ## [2.4.5] - 2026-01-15
 

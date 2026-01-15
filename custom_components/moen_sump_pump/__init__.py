@@ -85,7 +85,6 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self.mqtt_clients = {}  # Store MQTT clients per device
         self._last_alert_state = {}  # Track alert states for adaptive polling
         self._first_refresh = True  # Track if this is the first data fetch
-        self._water_distance_history = {}  # Track water distance readings per device
         self._notification_metadata = {}  # Cache notification ID to title mappings per device
         self._pump_thresholds = {}  # Persistent pump on/off thresholds per device
         self._previous_distance = {}  # Track previous water distance for event detection
@@ -228,13 +227,6 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                             if distance is not None:
                                 # Detect pump events for threshold learning
                                 self._detect_pump_events(device_duid, distance)
-
-                                if device_duid not in self._water_distance_history:
-                                    self._water_distance_history[device_duid] = []
-                                self._water_distance_history[device_duid].append(distance)
-                                # Keep last 100 readings
-                                if len(self._water_distance_history[device_duid]) > 100:
-                                    self._water_distance_history[device_duid].pop(0)
 
                             _LOGGER.debug(
                                 "Updated device %s with MQTT shadow data (water level: %s mm)",
@@ -518,10 +510,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP ON event: water distance drops significantly (basin filling)
         # Water gets closer to sensor = distance decreases
-        # Use 100mm (4 inch) threshold - real pump events show 5+ inch changes
-        # IMPORTANT: Only detect rapid changes to avoid slow drift over long polling intervals
-        # Real pump events happen quickly (basin fills in seconds/minutes, not hours)
-        if distance_change < -100 and 5 <= time_delta <= 600:  # 100mm drop in 5s-10min window
+        # Use 50mm threshold and strict time window
+        if distance_change < -50 and 5 <= time_delta <= 600:  # 50mm drop in 5s-10min window
             old_on = thresholds.get("pump_on_distance")
             if old_on is None:
                 new_on = int(current_distance)
@@ -539,10 +529,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
         # Water gets farther from sensor = distance increases
-        # Use 100mm (4 inch) threshold - real pump events show 5+ inch changes
-        # IMPORTANT: Only detect rapid changes to avoid slow drift over long polling intervals
-        # Real pump events happen quickly (pump drains basin in seconds/minutes, not hours)
-        elif distance_change > 100 and 5 <= time_delta <= 600:  # 100mm jump in 5s-10min window
+        # Use 50mm threshold and strict time window
+        elif distance_change > 50 and 5 <= time_delta <= 600:  # 50mm jump in 5s-10min window
             old_off = thresholds.get("pump_off_distance")
             if old_off is None:
                 new_off = int(current_distance)
@@ -565,16 +553,17 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         Uses event-based detection to learn pump thresholds over time:
         - Detects significant water distance drops (pump ON) and jumps (pump OFF)
         - Stores thresholds persistently with weighted averaging
-        - Works across days/weeks between pump cycles
-        - Falls back to simple min/max if no events detected yet
+        - Works across days/weeks/months between pump cycles
+        - No fallback logic - returns empty dict until first pump event detected
 
         Args:
             device_duid: Device UUID
 
         Returns:
             Dictionary with pump_on_distance, pump_off_distance, and observation count
+            Empty dict if no pump events detected yet
         """
-        # Try persistent thresholds first
+        # Return thresholds only if learned from actual pump events
         if device_duid in self._pump_thresholds:
             thresholds = self._pump_thresholds[device_duid]
             pump_on = thresholds.get("pump_on_distance")
@@ -589,26 +578,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     "off_event_count": thresholds.get("off_event_count", 0),
                 }
 
-        # Fallback: use simple min/max from recent history
-        history = self._water_distance_history.get(device_duid, [])
-
-        if not history or len(history) < 5:
-            return {}
-
-        pump_on_distance = min(history)
-        pump_off_distance = max(history)
-
-        # Need meaningful difference
-        if pump_off_distance - pump_on_distance < 10:
-            return {}
-
-        return {
-            "pump_on_distance": int(pump_on_distance),
-            "pump_off_distance": int(pump_off_distance),
-            "observation_count": len(history),
-            "on_event_count": 0,
-            "off_event_count": 0,
-        }
+        # No fallback - sensors show Unknown until first real pump event detected
+        # This prevents false updates from slow drift in water level
+        return {}
 
     async def disconnect_mqtt(self):
         """Disconnect all MQTT clients."""
