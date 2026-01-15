@@ -5,6 +5,24 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.6] - 2026-01-15
+
+### Fixed
+- **Pump Event Detection Triggering on Slow Drift** - Increased threshold and tightened time window:
+  - Root cause: 50mm threshold was too small, catching slow drift as pump events
+  - Increased threshold from 50mm to 100mm (4 inches) based on real pump cycle data
+  - Added time window bounds: 5 seconds minimum, 10 minutes maximum
+  - Only detects rapid, significant changes (100mm+ in 5s-10min)
+  - Completely ignores noise, oscillations, and gradual drift over hours
+  - Thresholds persist across weeks/months - no dependency on recent readings
+
+### Technical Details
+- Updated event detection in `_detect_pump_events()` (lines 524, 545)
+- Pump ON: requires 100mm drop in 5s-10min window (was 50mm in <5min)
+- Pump OFF: requires 100mm jump in 5s-10min window (was 50mm in <5min)
+- Time window uses range check: `5 <= time_delta <= 600`
+- Prevents both too-fast duplicates and too-slow drift from triggering
+
 ## [2.4.5] - 2026-01-15
 
 ### Fixed

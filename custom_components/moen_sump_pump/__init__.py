@@ -500,9 +500,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         distance_change = current_distance - previous_distance
         time_delta = current_time - last_time
 
-        # Ignore if too much time passed (stale comparison)
-        if time_delta > 600:  # 10 minutes
-            return
+        # Time-based filtering moved to event detection conditions below
+        # This allows us to always update previous_distance for the next comparison
 
         # Initialize thresholds if not present
         if device_duid not in self._pump_thresholds:
@@ -519,8 +518,10 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP ON event: water distance drops significantly (basin filling)
         # Water gets closer to sensor = distance decreases
-        # Use 50mm threshold to ignore noise and only catch real pump events
-        if distance_change < -50 and time_delta < 300:  # 50mm drop in < 5 min
+        # Use 100mm (4 inch) threshold - real pump events show 5+ inch changes
+        # IMPORTANT: Only detect rapid changes to avoid slow drift over long polling intervals
+        # Real pump events happen quickly (basin fills in seconds/minutes, not hours)
+        if distance_change < -100 and 5 <= time_delta <= 600:  # 100mm drop in 5s-10min window
             old_on = thresholds.get("pump_on_distance")
             if old_on is None:
                 new_on = int(current_distance)
@@ -538,8 +539,10 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
         # Water gets farther from sensor = distance increases
-        # Use 50mm threshold to ignore noise and only catch real pump events
-        elif distance_change > 50 and time_delta < 300:  # 50mm jump in < 5 min
+        # Use 100mm (4 inch) threshold - real pump events show 5+ inch changes
+        # IMPORTANT: Only detect rapid changes to avoid slow drift over long polling intervals
+        # Real pump events happen quickly (pump drains basin in seconds/minutes, not hours)
+        elif distance_change > 100 and 5 <= time_delta <= 600:  # 100mm jump in 5s-10min window
             old_off = thresholds.get("pump_off_distance")
             if old_off is None:
                 new_off = int(current_distance)
