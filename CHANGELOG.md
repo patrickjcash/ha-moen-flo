@@ -5,6 +5,23 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.5] - 2026-01-15
+
+### Fixed
+- **Pump Event Detection Too Sensitive** - Increased threshold to reduce false triggers from noise:
+  - Root cause: 15mm threshold was catching noise/oscillations as pump events
+  - Increased threshold from ±15mm to ±50mm for pump event detection
+  - Only real pump cycles (significant water level changes) trigger threshold updates
+  - Prevents spurious updates from local minima/maxima in noisy readings
+  - Improved logging to show actual distance change magnitude
+
+### Technical Details
+- Updated event detection thresholds in `_detect_pump_events()` (lines 523, 542)
+- Pump ON: now requires >50mm drop (was 15mm)
+- Pump OFF: now requires >50mm jump (was 15mm)
+- Added distance change magnitude to log messages for debugging
+- Changed debug logs to info level for event detection visibility
+
 ## [2.4.4] - 2026-01-14
 
 ### Fixed

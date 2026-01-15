@@ -519,16 +519,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP ON event: water distance drops significantly (basin filling)
         # Water gets closer to sensor = distance decreases
-        if distance_change < -15 and time_delta < 300:  # 15mm drop in < 5 min
+        # Use 50mm threshold to ignore noise and only catch real pump events
+        if distance_change < -50 and time_delta < 300:  # 50mm drop in < 5 min
             old_on = thresholds.get("pump_on_distance")
             if old_on is None:
                 new_on = int(current_distance)
-                _LOGGER.info("Device %s: Detected first pump ON event at %d mm", device_duid, new_on)
+                _LOGGER.info("Device %s: Detected first pump ON event at %d mm (dropped %d mm)",
+                            device_duid, new_on, int(abs(distance_change)))
             else:
                 # Weighted average: 80% old, 20% new
                 new_on = int(0.8 * old_on + 0.2 * current_distance)
-                _LOGGER.debug("Device %s: Pump ON event detected, updating threshold %d → %d mm",
-                            device_duid, old_on, new_on)
+                _LOGGER.info("Device %s: Pump ON event detected (dropped %d mm), updating threshold %d → %d mm",
+                            device_duid, int(abs(distance_change)), old_on, new_on)
 
             thresholds["pump_on_distance"] = new_on
             thresholds["on_event_count"] = thresholds.get("on_event_count", 0) + 1
@@ -536,16 +538,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
         # Water gets farther from sensor = distance increases
-        elif distance_change > 15 and time_delta < 300:  # 15mm jump in < 5 min
+        # Use 50mm threshold to ignore noise and only catch real pump events
+        elif distance_change > 50 and time_delta < 300:  # 50mm jump in < 5 min
             old_off = thresholds.get("pump_off_distance")
             if old_off is None:
                 new_off = int(current_distance)
-                _LOGGER.info("Device %s: Detected first pump OFF event at %d mm", device_duid, new_off)
+                _LOGGER.info("Device %s: Detected first pump OFF event at %d mm (jumped %d mm)",
+                            device_duid, new_off, int(distance_change))
             else:
                 # Weighted average: 80% old, 20% new
                 new_off = int(0.8 * old_off + 0.2 * current_distance)
-                _LOGGER.debug("Device %s: Pump OFF event detected, updating threshold %d → %d mm",
-                            device_duid, old_off, new_off)
+                _LOGGER.info("Device %s: Pump OFF event detected (jumped %d mm), updating threshold %d → %d mm",
+                            device_duid, int(distance_change), old_off, new_off)
 
             thresholds["pump_off_distance"] = new_off
             thresholds["off_event_count"] = thresholds.get("off_event_count", 0) + 1
