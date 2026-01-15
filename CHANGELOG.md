@@ -5,6 +5,36 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.4] - 2026-01-14
+
+### Fixed
+- **Pump ON/OFF Distance Sensors Showing Unknown** - Fixed sensors displaying "Unknown" instead of threshold values:
+  - Root cause: `continue` statements in MQTT telemetry section skipped entire device update loop
+  - Device update loop now continues even if MQTT is not connected
+  - Pump threshold calculations and other API calls now execute regardless of MQTT status
+  - MQTT connection still required for real-time water distance readings and event detection
+
+- **Adaptive Polling Not Reaching Maximum Interval** - Fixed polling staying capped at 60 seconds:
+  - Root cause: Alert checking logic was treating ALL alerts as non-info, capping interval at ALERT_MAX_INTERVAL (60s)
+  - Now correctly checks for unacknowledged critical/warning severity alerts only
+  - Info-severity alerts no longer prevent polling from reaching MAX_POLL_INTERVAL (300s)
+  - Polling will now scale up to 5 minutes when there are no pump cycles and no critical/warning alerts
+
+### Changed
+- **MQTT Telemetry Handling** - More graceful degradation when MQTT unavailable:
+  - Integration continues to fetch pump cycles, environment data, and other API endpoints
+  - MQTT failures no longer block the entire device update
+  - Cached telemetry data is used when MQTT is unavailable
+  - Clear warnings logged when MQTT is not connected
+
+### Technical Details
+- Removed `continue` statements from MQTT telemetry section (lines 187-252 in __init__.py)
+- Changed MQTT logic to use nested if/else instead of early exit
+- Pump threshold calculations now execute even without fresh MQTT data
+- Updated `_update_poll_interval()` to check alert severity (lines 448-468)
+- Checks for `"unlack" in state` to match mobile app behavior
+- Only critical/warning alerts cap polling at 60s; info alerts allow full 10s-300s range
+
 ## [2.4.3] - 2026-01-14
 
 ### Fixed

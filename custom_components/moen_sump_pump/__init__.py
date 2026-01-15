@@ -184,75 +184,72 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Get live telemetry via MQTT
                 try:
-                    if not mqtt_client or not mqtt_client.is_connected:
-                        _LOGGER.warning("MQTT not connected for device %s, skipping telemetry update", device_duid)
-                        continue
+                    if mqtt_client and mqtt_client.is_connected:
+                        # Trigger fresh sensor reading via MQTT
+                        await mqtt_client.trigger_sensor_update("sens_on")
+                        # Wait for device to take reading and update shadow (~2 seconds)
+                        await asyncio.sleep(2)
+                        # Request shadow via MQTT to get the fresh reading
+                        await mqtt_client.request_shadow()
+                        # Wait for shadow response
+                        await asyncio.sleep(1)
 
-                    # Trigger fresh sensor reading via MQTT
-                    await mqtt_client.trigger_sensor_update("sens_on")
-                    # Wait for device to take reading and update shadow (~2 seconds)
-                    await asyncio.sleep(2)
-                    # Request shadow via MQTT to get the fresh reading
-                    await mqtt_client.request_shadow()
-                    # Wait for shadow response
-                    await asyncio.sleep(1)
+                        # Stop streaming to preserve battery
+                        await mqtt_client.trigger_sensor_update("updates_off")
 
-                    # Stop streaming to preserve battery
-                    await mqtt_client.trigger_sensor_update("updates_off")
+                        # Get shadow data from MQTT client
+                        reported = mqtt_client.last_shadow_data
+                        if reported:
+                            # Merge shadow data into device info
+                            device_data["info"]["crockTofDistance"] = reported.get(
+                                "crockTofDistance", device_data["info"].get("crockTofDistance")
+                            )
+                            device_data["info"]["droplet"] = reported.get(
+                                "droplet", device_data["info"].get("droplet")
+                            )
+                            device_data["info"]["connected"] = reported.get(
+                                "connected", device_data["info"].get("connected")
+                            )
+                            device_data["info"]["wifiRssi"] = reported.get(
+                                "wifiRssi", device_data["info"].get("wifiRssi")
+                            )
+                            device_data["info"]["batteryPercentage"] = reported.get(
+                                "batteryPercentage", device_data["info"].get("batteryPercentage")
+                            )
+                            device_data["info"]["powerSource"] = reported.get(
+                                "powerSource", device_data["info"].get("powerSource")
+                            )
+                            device_data["info"]["alerts"] = reported.get(
+                                "alerts", device_data["info"].get("alerts")
+                            )
 
-                    # Get shadow data from MQTT client
-                    reported = mqtt_client.last_shadow_data
-                    if not reported:
-                        _LOGGER.warning("No shadow data received from MQTT for device %s", device_duid)
-                        continue
+                            # Track water distance for threshold calculation
+                            distance = reported.get("crockTofDistance")
+                            if distance is not None:
+                                # Detect pump events for threshold learning
+                                self._detect_pump_events(device_duid, distance)
 
-                    # Merge shadow data into device info
-                    device_data["info"]["crockTofDistance"] = reported.get(
-                        "crockTofDistance", device_data["info"].get("crockTofDistance")
-                    )
-                    device_data["info"]["droplet"] = reported.get(
-                        "droplet", device_data["info"].get("droplet")
-                    )
-                    device_data["info"]["connected"] = reported.get(
-                        "connected", device_data["info"].get("connected")
-                    )
-                    device_data["info"]["wifiRssi"] = reported.get(
-                        "wifiRssi", device_data["info"].get("wifiRssi")
-                    )
-                    device_data["info"]["batteryPercentage"] = reported.get(
-                        "batteryPercentage", device_data["info"].get("batteryPercentage")
-                    )
-                    device_data["info"]["powerSource"] = reported.get(
-                        "powerSource", device_data["info"].get("powerSource")
-                    )
-                    device_data["info"]["alerts"] = reported.get(
-                        "alerts", device_data["info"].get("alerts")
-                    )
+                                if device_duid not in self._water_distance_history:
+                                    self._water_distance_history[device_duid] = []
+                                self._water_distance_history[device_duid].append(distance)
+                                # Keep last 100 readings
+                                if len(self._water_distance_history[device_duid]) > 100:
+                                    self._water_distance_history[device_duid].pop(0)
 
-                    # Track water distance for threshold calculation
-                    distance = reported.get("crockTofDistance")
-                    if distance is not None:
-                        # Detect pump events for threshold learning
-                        self._detect_pump_events(device_duid, distance)
-
-                        if device_duid not in self._water_distance_history:
-                            self._water_distance_history[device_duid] = []
-                        self._water_distance_history[device_duid].append(distance)
-                        # Keep last 100 readings
-                        if len(self._water_distance_history[device_duid]) > 100:
-                            self._water_distance_history[device_duid].pop(0)
-
-                    _LOGGER.debug(
-                        "Updated device %s with MQTT shadow data (water level: %s mm)",
-                        device_duid,
-                        reported.get("crockTofDistance"),
-                    )
+                            _LOGGER.debug(
+                                "Updated device %s with MQTT shadow data (water level: %s mm)",
+                                device_duid,
+                                reported.get("crockTofDistance"),
+                            )
+                        else:
+                            _LOGGER.warning("No shadow data received from MQTT for device %s", device_duid)
+                    else:
+                        _LOGGER.warning("MQTT not connected for device %s, using cached telemetry data", device_duid)
 
                 except Exception as err:
                     _LOGGER.warning(
                         "Failed to get shadow data for device %s: %s", device_duid, err
                     )
-                    continue
 
                 # Get environment data (temp/humidity) using numeric ID
                 try:
@@ -429,15 +426,27 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         # Apply hard limits
         calculated_interval = max(MIN_POLL_INTERVAL, min(calculated_interval, MAX_POLL_INTERVAL))
 
-        # Check for non-info alerts
+        # Check for unacknowledged critical or warning alerts
         alerts = device_data.get("info", {}).get("alerts")
         if not isinstance(alerts, dict):
             alerts = {}
 
-        # Check if we have any non-info severity alerts
-        # We need to check the actual alert severity from logs/events
-        # For now, assume any alert in the alerts dict is non-info (info alerts might not be stored there)
-        has_non_info_alert = len(alerts) > 0
+        notification_metadata = device_data.get("notification_metadata", {})
+        has_non_info_alert = False
+
+        for alert_id, alert_data in alerts.items():
+            state = alert_data.get("state", "")
+            # Only check unacknowledged alerts (matches mobile app behavior)
+            if "unlack" in state:
+                # Get severity from alert data (v2 API) or metadata
+                severity = alert_data.get("severity", "").lower()
+                if not severity and alert_id in notification_metadata:
+                    severity = notification_metadata[alert_id].get("severity", "").lower()
+
+                # Only cap polling for critical or warning severity
+                if severity in ["critical", "warning"]:
+                    has_non_info_alert = True
+                    break
 
         # Apply alert override
         if has_non_info_alert:
