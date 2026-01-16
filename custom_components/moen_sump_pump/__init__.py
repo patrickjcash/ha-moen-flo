@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import MoenFloNABClient, MoenFloNABApiError, MoenFloNABMqttClient
@@ -25,6 +26,10 @@ MIN_POLL_INTERVAL = 10  # Minimum polling interval in seconds
 MAX_POLL_INTERVAL = 300  # Maximum polling interval in seconds (5 minutes)
 ALERT_MAX_INTERVAL = 60  # Maximum interval when non-info alerts are active
 CYCLE_WINDOW_MINUTES = 15  # Look back window for counting recent cycles
+
+# Storage constants
+STORAGE_VERSION = 1
+STORAGE_KEY = "moen_sump_pump_thresholds"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -44,6 +49,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create coordinator
     coordinator = MoenFloNABDataUpdateCoordinator(hass, client)
+
+    # Load persistent pump thresholds from storage
+    await coordinator.async_load_thresholds()
 
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
@@ -87,8 +95,22 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._first_refresh = True  # Track if this is the first data fetch
         self._notification_metadata = {}  # Cache notification ID to title mappings per device
         self._pump_thresholds = {}  # Persistent pump on/off thresholds per device
-        self._previous_distance = {}  # Track previous water distance for event detection
-        self._last_distance_time = {}  # Track timestamp of last distance reading
+        self._distance_history = {}  # Track last 24 readings per device for event detection
+        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)  # Persistent storage for thresholds
+
+    async def async_load_thresholds(self) -> None:
+        """Load pump thresholds from persistent storage."""
+        data = await self._store.async_load()
+        if data:
+            self._pump_thresholds = data.get("thresholds", {})
+            _LOGGER.info("Loaded pump thresholds for %d device(s) from storage", len(self._pump_thresholds))
+        else:
+            _LOGGER.debug("No stored pump thresholds found, starting fresh")
+
+    async def async_save_thresholds(self) -> None:
+        """Save pump thresholds to persistent storage."""
+        await self._store.async_save({"thresholds": self._pump_thresholds})
+        _LOGGER.debug("Saved pump thresholds for %d device(s) to storage", len(self._pump_thresholds))
 
     async def _async_update_data(self):
         """Fetch data from API."""
@@ -467,8 +489,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
     def _detect_pump_events(self, device_duid: str, current_distance: float) -> None:
         """Detect pump ON/OFF events from water distance changes.
 
-        Uses persistent thresholds that adapt over time based on detected pump events.
-        This approach works across long time periods (days/weeks) between pump cycles.
+        Tracks the last 24 readings and detects 50mm+ changes between current reading
+        and any previous reading in the history. Works regardless of polling interval.
 
         Args:
             device_duid: Device UUID
@@ -476,24 +498,23 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         """
         import time
 
-        previous_distance = self._previous_distance.get(device_duid)
-        last_time = self._last_distance_time.get(device_duid, 0)
-        current_time = time.time()
+        # Initialize history for device if not present
+        if device_duid not in self._distance_history:
+            self._distance_history[device_duid] = []
 
-        # Store current reading for next iteration
-        self._previous_distance[device_duid] = current_distance
-        self._last_distance_time[device_duid] = current_time
+        # Add current reading to history
+        self._distance_history[device_duid].append({
+            "distance": current_distance,
+            "timestamp": time.time()
+        })
 
-        # Need previous reading to detect changes
-        if previous_distance is None:
+        # Keep only last 24 readings
+        if len(self._distance_history[device_duid]) > 24:
+            self._distance_history[device_duid].pop(0)
+
+        # Need at least 2 readings to detect changes
+        if len(self._distance_history[device_duid]) < 2:
             return
-
-        # Calculate change
-        distance_change = current_distance - previous_distance
-        time_delta = current_time - last_time
-
-        # Time-based filtering moved to event detection conditions below
-        # This allows us to always update previous_distance for the next comparison
 
         # Initialize thresholds if not present
         if device_duid not in self._pump_thresholds:
@@ -507,44 +528,65 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
         thresholds = self._pump_thresholds[device_duid]
+        history = self._distance_history[device_duid]
 
-        # Detect PUMP ON event: water distance drops significantly (basin filling)
-        # Water gets closer to sensor = distance decreases
-        # Use 50mm threshold and strict time window
-        if distance_change < -50 and 5 <= time_delta <= 600:  # 50mm drop in 5s-10min window
-            old_on = thresholds.get("pump_on_distance")
-            if old_on is None:
-                new_on = int(current_distance)
-                _LOGGER.info("Device %s: Detected first pump ON event at %d mm (dropped %d mm)",
-                            device_duid, new_on, int(abs(distance_change)))
-            else:
-                # Weighted average: 80% old, 20% new
-                new_on = int(0.8 * old_on + 0.2 * current_distance)
-                _LOGGER.info("Device %s: Pump ON event detected (dropped %d mm), updating threshold %d → %d mm",
-                            device_duid, int(abs(distance_change)), old_on, new_on)
+        # Compare current reading to all previous readings in history
+        # to detect significant changes (50mm+)
+        for i in range(len(history) - 1):
+            previous_reading = history[i]
+            distance_change = current_distance - previous_reading["distance"]
 
-            thresholds["pump_on_distance"] = new_on
-            thresholds["on_event_count"] = thresholds.get("on_event_count", 0) + 1
-            thresholds["last_on_event"] = current_time
+            # Detect PUMP ON event: water distance drops significantly (basin filling)
+            # Water gets closer to sensor = distance decreases
+            if distance_change < -50:  # 50mm drop
+                old_on = thresholds.get("pump_on_distance")
+                if old_on is None:
+                    new_on = int(current_distance)
+                    _LOGGER.info("Device %s: Detected first pump ON event at %d mm (dropped %d mm)",
+                                device_duid, new_on, int(abs(distance_change)))
+                    thresholds["pump_on_distance"] = new_on
+                    thresholds["on_event_count"] = 1
+                    thresholds["last_on_event"] = time.time()
+                    # Schedule async save
+                    self.hass.async_create_task(self.async_save_thresholds())
+                    return  # Stop checking after first event detected
+                else:
+                    # Weighted average: 80% old, 20% new
+                    new_on = int(0.8 * old_on + 0.2 * current_distance)
+                    _LOGGER.info("Device %s: Pump ON event detected (dropped %d mm), updating threshold %d → %d mm",
+                                device_duid, int(abs(distance_change)), old_on, new_on)
+                    thresholds["pump_on_distance"] = new_on
+                    thresholds["on_event_count"] = thresholds.get("on_event_count", 0) + 1
+                    thresholds["last_on_event"] = time.time()
+                    # Schedule async save
+                    self.hass.async_create_task(self.async_save_thresholds())
+                    return  # Stop checking after first event detected
 
-        # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
-        # Water gets farther from sensor = distance increases
-        # Use 50mm threshold and strict time window
-        elif distance_change > 50 and 5 <= time_delta <= 600:  # 50mm jump in 5s-10min window
-            old_off = thresholds.get("pump_off_distance")
-            if old_off is None:
-                new_off = int(current_distance)
-                _LOGGER.info("Device %s: Detected first pump OFF event at %d mm (jumped %d mm)",
-                            device_duid, new_off, int(distance_change))
-            else:
-                # Weighted average: 80% old, 20% new
-                new_off = int(0.8 * old_off + 0.2 * current_distance)
-                _LOGGER.info("Device %s: Pump OFF event detected (jumped %d mm), updating threshold %d → %d mm",
-                            device_duid, int(distance_change), old_off, new_off)
-
-            thresholds["pump_off_distance"] = new_off
-            thresholds["off_event_count"] = thresholds.get("off_event_count", 0) + 1
-            thresholds["last_off_event"] = current_time
+            # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
+            # Water gets farther from sensor = distance increases
+            elif distance_change > 50:  # 50mm jump
+                old_off = thresholds.get("pump_off_distance")
+                if old_off is None:
+                    new_off = int(current_distance)
+                    _LOGGER.info("Device %s: Detected first pump OFF event at %d mm (jumped %d mm)",
+                                device_duid, new_off, int(distance_change))
+                    thresholds["pump_off_distance"] = new_off
+                    thresholds["off_event_count"] = 1
+                    thresholds["last_off_event"] = time.time()
+                    # Schedule async save
+                    self.hass.async_create_task(self.async_save_thresholds())
+                    return  # Stop checking after first event detected
+                else:
+                    # Weighted average: 80% old, 20% new
+                    new_off = int(0.8 * old_off + 0.2 * current_distance)
+                    _LOGGER.info("Device %s: Pump OFF event detected (jumped %d mm), updating threshold %d → %d mm",
+                                device_duid, int(distance_change), old_off, new_off)
+                    thresholds["pump_off_distance"] = new_off
+                    thresholds["off_event_count"] = thresholds.get("off_event_count", 0) + 1
+                    thresholds["last_off_event"] = time.time()
+                    # Schedule async save
+                    self.hass.async_create_task(self.async_save_thresholds())
+                    return  # Stop checking after first event detected
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
         """Return pump on/off distance thresholds from persistent event detection.

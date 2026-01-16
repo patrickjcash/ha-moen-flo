@@ -5,6 +5,33 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.7] - 2026-01-16
+
+### Fixed
+- **Pump Event Detection Not Triggering** - Rewrote event detection to be more reliable:
+  - Root cause: Consecutive-only comparison could miss pump events in certain scenarios
+  - Old approach: Compared only against the immediately previous reading stored in `_previous_distance`
+  - New approach: Maintains history of last 24 readings and compares current reading against ALL previous readings
+  - This makes detection robust to edge cases where consecutive comparison fails
+  - Removed time window constraints (was 5s-600s) - now works regardless of polling interval
+  - Still uses 50mm threshold for detecting significant water level changes
+  - Example: Now successfully detects 218mm → 357mm (139mm jump) that was missed before
+
+### Added
+- **Persistent Storage for Pump Thresholds** - Thresholds now survive Home Assistant restarts:
+  - Pump ON/OFF distance thresholds are now saved to persistent storage
+  - Automatically loads saved thresholds on startup
+  - Saves thresholds whenever pump events are detected
+  - Storage uses Home Assistant's Store with key `moen_sump_pump_thresholds`
+  - Prevents having to re-learn thresholds after HA restarts
+
+### Technical Details
+- Replaced `_previous_distance` dict with `_distance_history` that stores last 24 readings per device
+- Event detection now loops through all historical readings to find 50mm+ changes
+- Added `async_load_thresholds()` and `async_save_thresholds()` methods
+- Storage version 1 with schema: `{"thresholds": {device_duid: {...}}}`
+- Thresholds are saved asynchronously using `hass.async_create_task()` from sync context
+
 ## [2.4.6] - 2026-01-15
 
 ### Fixed
