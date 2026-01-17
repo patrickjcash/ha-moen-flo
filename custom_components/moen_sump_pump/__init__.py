@@ -99,18 +99,24 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)  # Persistent storage for thresholds
 
     async def async_load_thresholds(self) -> None:
-        """Load pump thresholds from persistent storage."""
+        """Load pump thresholds and distance history from persistent storage."""
         data = await self._store.async_load()
         if data:
             self._pump_thresholds = data.get("thresholds", {})
+            self._distance_history = data.get("distance_history", {})
             _LOGGER.info("Loaded pump thresholds for %d device(s) from storage", len(self._pump_thresholds))
+            _LOGGER.info("Loaded distance history for %d device(s) from storage", len(self._distance_history))
         else:
             _LOGGER.debug("No stored pump thresholds found, starting fresh")
 
     async def async_save_thresholds(self) -> None:
-        """Save pump thresholds to persistent storage."""
-        await self._store.async_save({"thresholds": self._pump_thresholds})
+        """Save pump thresholds and distance history to persistent storage."""
+        await self._store.async_save({
+            "thresholds": self._pump_thresholds,
+            "distance_history": self._distance_history
+        })
         _LOGGER.debug("Saved pump thresholds for %d device(s) to storage", len(self._pump_thresholds))
+        _LOGGER.debug("Saved distance history for %d device(s) to storage", len(self._distance_history))
 
     async def _async_update_data(self):
         """Fetch data from API."""
@@ -511,6 +517,9 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         # Keep only last 24 readings
         if len(self._distance_history[device_duid]) > 24:
             self._distance_history[device_duid].pop(0)
+
+        # Save history after each update to persist across restarts
+        self.hass.async_create_task(self.async_save_thresholds())
 
         # Need at least 2 readings to detect changes
         if len(self._distance_history[device_duid]) < 2:

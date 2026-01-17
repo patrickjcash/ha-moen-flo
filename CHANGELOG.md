@@ -5,6 +5,24 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.8] - 2026-01-17
+
+### Fixed
+- **Distance History Not Persisting Across Restarts** - Critical bug preventing event detection after restarts:
+  - Root cause: `_distance_history` was only stored in memory, not persisted to storage
+  - Impact: After any Home Assistant restart, history would reset to empty `{}`
+  - Detection requires at least 2 readings in history, so first reading after restart would be skipped
+  - If HA restarted between pump cycles, detection would never accumulate enough history
+  - Fix: Added `_distance_history` to persistent storage alongside `_pump_thresholds`
+  - History now saved after each MQTT update to ensure survival across restarts
+  - Storage schema updated to: `{"thresholds": {...}, "distance_history": {...}}`
+
+### Technical Details
+- Updated `async_load_thresholds()` to load both thresholds and distance history
+- Updated `async_save_thresholds()` to save both thresholds and distance history
+- Added save call after every distance reading update (line 522)
+- Distance history now properly accumulates across multiple HA restart cycles
+
 ## [2.4.7] - 2026-01-16
 
 ### Fixed
