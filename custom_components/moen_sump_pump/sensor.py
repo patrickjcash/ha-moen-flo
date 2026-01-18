@@ -312,12 +312,12 @@ class MoenFloNABPumpOnDistanceSensor(MoenFloNABSensorBase):
         pump_thresholds = self.device_data.get("pump_thresholds", {})
 
         attrs = {
-            "event_count": pump_thresholds.get("on_event_count", 0),
-            "calculation_method": "event_detection" if pump_thresholds.get("on_event_count", 0) > 0 else "min_max_fallback",
+            "event_count": pump_thresholds.get("cycle_count", 0),
+            "calculation_method": "event_detection" if pump_thresholds.get("cycle_count", 0) > 0 else "min_max_fallback",
         }
 
         # Add last event timestamp if available
-        last_event = pump_thresholds.get("last_on_event")
+        last_event = pump_thresholds.get("last_cycle")
         if last_event:
             attrs["last_event"] = datetime.fromtimestamp(last_event).isoformat()
 
@@ -363,12 +363,12 @@ class MoenFloNABPumpOffDistanceSensor(MoenFloNABSensorBase):
         pump_thresholds = self.device_data.get("pump_thresholds", {})
 
         attrs = {
-            "event_count": pump_thresholds.get("off_event_count", 0),
-            "calculation_method": "event_detection" if pump_thresholds.get("off_event_count", 0) > 0 else "min_max_fallback",
+            "event_count": pump_thresholds.get("cycle_count", 0),
+            "calculation_method": "event_detection" if pump_thresholds.get("cycle_count", 0) > 0 else "min_max_fallback",
         }
 
         # Add last event timestamp if available
-        last_event = pump_thresholds.get("last_off_event")
+        last_event = pump_thresholds.get("last_cycle")
         if last_event:
             attrs["last_event"] = datetime.fromtimestamp(last_event).isoformat()
 

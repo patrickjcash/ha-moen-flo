@@ -530,72 +530,45 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             self._pump_thresholds[device_duid] = {
                 "pump_on_distance": None,
                 "pump_off_distance": None,
-                "on_event_count": 0,
-                "off_event_count": 0,
-                "last_on_event": None,
-                "last_off_event": None,
+                "cycle_count": 0,
+                "last_cycle": None,
             }
 
         thresholds = self._pump_thresholds[device_duid]
         history = self._distance_history[device_duid]
 
-        # Compare current reading to all previous readings in history
-        # to detect significant changes (50mm+)
-        for i in range(len(history) - 1):
-            previous_reading = history[i]
-            distance_change = current_distance - previous_reading["distance"]
+        # Find min and max in history to detect a complete pump cycle
+        distances = [reading["distance"] for reading in history]
+        min_distance = min(distances)
+        max_distance = max(distances)
 
-            # Detect PUMP ON event: water distance drops significantly (basin filling)
-            # Water gets closer to sensor = distance decreases
-            if distance_change < -50:  # 50mm drop
-                old_on = thresholds.get("pump_on_distance")
-                if old_on is None:
-                    new_on = int(current_distance)
-                    _LOGGER.info("Device %s: Detected first pump ON event at %d mm (dropped %d mm)",
-                                device_duid, new_on, int(abs(distance_change)))
-                    thresholds["pump_on_distance"] = new_on
-                    thresholds["on_event_count"] = 1
-                    thresholds["last_on_event"] = time.time()
-                    # Schedule async save
-                    self.hass.async_create_task(self.async_save_thresholds())
-                    return  # Stop checking after first event detected
-                else:
-                    # Weighted average: 80% old, 20% new
-                    new_on = int(0.8 * old_on + 0.2 * current_distance)
-                    _LOGGER.info("Device %s: Pump ON event detected (dropped %d mm), updating threshold %d → %d mm",
-                                device_duid, int(abs(distance_change)), old_on, new_on)
-                    thresholds["pump_on_distance"] = new_on
-                    thresholds["on_event_count"] = thresholds.get("on_event_count", 0) + 1
-                    thresholds["last_on_event"] = time.time()
-                    # Schedule async save
-                    self.hass.async_create_task(self.async_save_thresholds())
-                    return  # Stop checking after first event detected
+        # Detect complete pump cycle: min to max range >= 100mm (50mm drop + 50mm rise)
+        if max_distance - min_distance >= 100:
+            old_on = thresholds.get("pump_on_distance")
+            old_off = thresholds.get("pump_off_distance")
 
-            # Detect PUMP OFF event: water distance jumps significantly (pump drained basin)
-            # Water gets farther from sensor = distance increases
-            elif distance_change > 50:  # 50mm jump
-                old_off = thresholds.get("pump_off_distance")
-                if old_off is None:
-                    new_off = int(current_distance)
-                    _LOGGER.info("Device %s: Detected first pump OFF event at %d mm (jumped %d mm)",
-                                device_duid, new_off, int(distance_change))
-                    thresholds["pump_off_distance"] = new_off
-                    thresholds["off_event_count"] = 1
-                    thresholds["last_off_event"] = time.time()
-                    # Schedule async save
-                    self.hass.async_create_task(self.async_save_thresholds())
-                    return  # Stop checking after first event detected
-                else:
-                    # Weighted average: 80% old, 20% new
-                    new_off = int(0.8 * old_off + 0.2 * current_distance)
-                    _LOGGER.info("Device %s: Pump OFF event detected (jumped %d mm), updating threshold %d → %d mm",
-                                device_duid, int(distance_change), old_off, new_off)
-                    thresholds["pump_off_distance"] = new_off
-                    thresholds["off_event_count"] = thresholds.get("off_event_count", 0) + 1
-                    thresholds["last_off_event"] = time.time()
-                    # Schedule async save
-                    self.hass.async_create_task(self.async_save_thresholds())
-                    return  # Stop checking after first event detected
+            if old_on is None or old_off is None:
+                # First cycle detected
+                new_on = int(min_distance)
+                new_off = int(max_distance)
+                _LOGGER.info("Device %s: Detected first pump cycle (range: %d-%d mm, span: %d mm)",
+                            device_duid, new_on, new_off, new_off - new_on)
+                thresholds["pump_on_distance"] = new_on
+                thresholds["pump_off_distance"] = new_off
+                thresholds["cycle_count"] = 1
+                thresholds["last_cycle"] = time.time()
+                self.hass.async_create_task(self.async_save_thresholds())
+            else:
+                # Update thresholds with weighted average
+                new_on = int(0.8 * old_on + 0.2 * min_distance)
+                new_off = int(0.8 * old_off + 0.2 * max_distance)
+                _LOGGER.info("Device %s: Pump cycle detected, updating thresholds: ON %d→%d mm, OFF %d→%d mm",
+                            device_duid, old_on, new_on, old_off, new_off)
+                thresholds["pump_on_distance"] = new_on
+                thresholds["pump_off_distance"] = new_off
+                thresholds["cycle_count"] = thresholds.get("cycle_count", 0) + 1
+                thresholds["last_cycle"] = time.time()
+                self.hass.async_create_task(self.async_save_thresholds())
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
         """Return pump on/off distance thresholds from persistent event detection.
@@ -624,9 +597,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 return {
                     "pump_on_distance": pump_on,
                     "pump_off_distance": pump_off,
-                    "observation_count": thresholds.get("on_event_count", 0) + thresholds.get("off_event_count", 0),
-                    "on_event_count": thresholds.get("on_event_count", 0),
-                    "off_event_count": thresholds.get("off_event_count", 0),
+                    "observation_count": thresholds.get("cycle_count", 0),
+                    "cycle_count": thresholds.get("cycle_count", 0),
                 }
 
         # No fallback - sensors show Unknown until first real pump event detected
