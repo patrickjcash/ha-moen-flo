@@ -5,6 +5,26 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.9] - 2026-01-18
+
+### Fixed
+- **Pump Cycle Detection Rewritten** - Fixed detection to properly recognize pump drain cycles:
+  - Root cause: Detection was looking for separate ON/OFF events with complex comparison logic
+  - Impact: Never detected any pump events, sensors remained "Unknown"
+  - New approach: Detects pump drain cycles by finding 50mm+ distance increase in 24-reading history
+  - When pump runs and drains basin, distance to water increases by 50mm+
+  - Pump ON distance = minimum distance in history (water closest to sensor before pump runs)
+  - Pump OFF distance = maximum distance in history (water farthest after pump drains)
+  - Simplified from tracking separate events to single cycle count
+
+### Technical Details
+- Changed from separate `on_event_count`/`off_event_count` to unified `cycle_count`
+- Detection uses min/max of rolling 24-reading window
+- Requires 50mm+ span (distance increase when pump drains) to detect cycle
+- Updated sensor attributes to use `cycle_count` and `last_cycle`
+- Removed complex event-by-event comparison loop
+- Maintains 80/20 weighted blending with previous threshold values
+
 ## [2.4.8] - 2026-01-17
 
 ### Fixed
