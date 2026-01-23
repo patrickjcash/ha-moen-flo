@@ -493,10 +493,10 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
     def _detect_pump_events(self, device_duid: str, current_distance: float) -> None:
-        """Detect pump ON/OFF events from water distance changes.
+        """Detect pump cycles from sudden distance increases.
 
-        Tracks the last 24 readings and detects 50mm+ changes between current reading
-        and any previous reading in the history. Works regardless of polling interval.
+        Detects pump drain events by looking for 20mm+ sudden increases in distance
+        between consecutive readings (the sharp vertical edge when pump drains basin).
 
         Args:
             device_duid: Device UUID
@@ -508,21 +508,26 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         if device_duid not in self._distance_history:
             self._distance_history[device_duid] = []
 
+        history = self._distance_history[device_duid]
+
+        # Get previous reading before adding current
+        previous_distance = history[-1]["distance"] if history else None
+
         # Add current reading to history
-        self._distance_history[device_duid].append({
+        history.append({
             "distance": current_distance,
             "timestamp": time.time()
         })
 
         # Keep only last 24 readings
-        if len(self._distance_history[device_duid]) > 24:
-            self._distance_history[device_duid].pop(0)
+        if len(history) > 24:
+            history.pop(0)
 
         # Save history after each update to persist across restarts
         self.hass.async_create_task(self.async_save_thresholds())
 
-        # Need at least 2 readings to detect changes
-        if len(self._distance_history[device_duid]) < 2:
+        # Need previous reading to detect change
+        if previous_distance is None:
             return
 
         # Initialize thresholds if not present
@@ -535,31 +540,30 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
         thresholds = self._pump_thresholds[device_duid]
-        history = self._distance_history[device_duid]
 
-        # Find min and max in history
-        distances = [reading["distance"] for reading in history]
-        min_distance = min(distances)
-        max_distance = max(distances)
+        # Detect pump cycle: 20mm+ sudden increase (pump just drained basin)
+        distance_jump = current_distance - previous_distance
+        if distance_jump >= 20:
+            # Pump just ran: previous reading = pump ON (before drain), current = pump OFF (after drain)
+            pump_on = previous_distance
+            pump_off = current_distance
 
-        # Detect pump cycle: 50mm+ increase in distance (pump drained basin)
-        if max_distance - min_distance >= 50:
             old_on = thresholds.get("pump_on_distance")
             old_off = thresholds.get("pump_off_distance")
 
             # Blend with previous values using 80/20 weighting
             if old_on is None or old_off is None:
                 # First cycle detected
-                new_on = int(min_distance)
-                new_off = int(max_distance)
-                _LOGGER.info("Device %s: Detected first pump cycle (ON: %d mm, OFF: %d mm, span: %d mm)",
-                            device_duid, new_on, new_off, new_off - new_on)
+                new_on = int(pump_on)
+                new_off = int(pump_off)
+                _LOGGER.info("Device %s: Detected first pump cycle (ON: %d mm, OFF: %d mm, jump: %d mm)",
+                            device_duid, new_on, new_off, int(distance_jump))
             else:
                 # Update with weighted average: 80% old, 20% new
-                new_on = int(0.8 * old_on + 0.2 * min_distance)
-                new_off = int(0.8 * old_off + 0.2 * max_distance)
-                _LOGGER.info("Device %s: Pump cycle detected, updating thresholds: ON %d→%d mm, OFF %d→%d mm",
-                            device_duid, old_on, new_on, old_off, new_off)
+                new_on = int(0.8 * old_on + 0.2 * pump_on)
+                new_off = int(0.8 * old_off + 0.2 * pump_off)
+                _LOGGER.info("Device %s: Pump cycle detected (jump: %d mm), updating thresholds: ON %d→%d mm, OFF %d→%d mm",
+                            device_duid, int(distance_jump), old_on, new_on, old_off, new_off)
 
             thresholds["pump_on_distance"] = new_on
             thresholds["pump_off_distance"] = new_off

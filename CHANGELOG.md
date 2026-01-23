@@ -5,6 +5,23 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.10] - 2026-01-23
+
+### Fixed
+- **Pump Cycle Detection Using Rate of Change** - Improved detection for basins with smaller water level swings:
+  - Old approach: Required 50mm+ span in 24-reading history window (missed shallow basins)
+  - New approach: Detects 20mm+ sudden jump between consecutive readings
+  - Catches the sharp vertical edge when pump drains basin, regardless of total span
+  - Works for both deep basins (large swings) and shallow basins (small swings)
+  - Pump ON distance = reading before the jump (water level before pump ran)
+  - Pump OFF distance = reading after the jump (water level after pump drained)
+
+### Technical Details
+- Detection triggers on 20mm+ increase between consecutive readings
+- No longer requires capturing both min and max in history window
+- Still maintains 24-reading history for persistence across restarts
+- Maintains 80/20 weighted blending with previous threshold values
+
 ## [2.4.9] - 2026-01-18
 
 ### Fixed
