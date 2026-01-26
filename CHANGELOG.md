@@ -5,6 +5,27 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.11] - 2026-01-26
+
+### Fixed
+- **Temperature Sensor Double Conversion** (GitHub Issue #1) - Fixed temperature showing incorrect values for metric users:
+  - Root cause: Integration assumed API always returns Fahrenheit, but API returns temperature in user's configured unit
+  - Impact: Users with Celsius configured in Moen app saw values like -8.3°C instead of 17°C
+  - Fix: Now reads `unitOfMeasure` from API response and sets native unit dynamically
+  - Supports both "F" (Fahrenheit) and "C" (Celsius) from API
+
+- **Basin Diameter Sensor** - Now properly supports metric unit systems:
+  - Changed from hardcoded inches string to `UnitOfLength.MILLIMETERS`
+  - Added `SensorDeviceClass.DISTANCE` for automatic Home Assistant unit conversion
+  - Now reads from `crockDiameterMM` field (millimeters) instead of `crockDiameter` (inches)
+  - Imperial users will see inches automatically (HA converts for display)
+  - Added `basin_diameter_inches` attribute for reference
+
+- **Volume Statistics** - Added dynamic unit detection for pump volume statistics:
+  - Now reads `emptyVolumeUnits` from API response to determine correct unit
+  - Supports both gallons ("gal") and liters ("L", "liter")
+  - Defaults to gallons for backwards compatibility if unit not specified
+
 ## [2.4.10] - 2026-01-23
 
 ### Fixed

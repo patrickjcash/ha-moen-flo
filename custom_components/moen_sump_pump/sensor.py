@@ -380,7 +380,6 @@ class MoenFloNABTemperatureSensor(MoenFloNABSensorBase):
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def __init__(
         self,
@@ -392,6 +391,22 @@ class MoenFloNABTemperatureSensor(MoenFloNABSensorBase):
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_temperature"
         self._attr_name = f"{device_name} Temperature"
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        """Return the unit of measurement based on API response.
+
+        The API returns unitOfMeasure as "F" or "C" based on user's
+        Moen app settings. We use this to report the correct unit to HA.
+        """
+        env_data = self.device_data.get("environment", {})
+        temp_data = env_data.get("tempData", {})
+        unit = temp_data.get("unitOfMeasure", "F")
+
+        if unit == "C":
+            return UnitOfTemperature.CELSIUS
+        # Default to Fahrenheit for backwards compatibility
+        return UnitOfTemperature.FAHRENHEIT
 
     @property
     def native_value(self) -> float | None:
@@ -411,11 +426,11 @@ class MoenFloNABTemperatureSensor(MoenFloNABSensorBase):
         """Return additional attributes."""
         env_data = self.device_data.get("environment", {})
         temp_data = env_data.get("tempData", {})
-        
+
         return {
             "low_threshold": temp_data.get("tempLowThreshold"),
             "high_threshold": temp_data.get("tempHighThreshold"),
-            "unit": temp_data.get("unitOfMeasure"),
+            "api_unit": temp_data.get("unitOfMeasure"),
         }
 
 
@@ -886,9 +901,10 @@ class MoenFloNABPrimaryPumpInstallDateSensor(MoenFloNABSensorBase):
 class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
     """Basin diameter diagnostic sensor."""
 
+    _attr_device_class = SensorDeviceClass.DISTANCE
     _attr_icon = "mdi:diameter"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_native_unit_of_measurement = "in"
+    _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
 
     def __init__(
         self,
@@ -903,14 +919,16 @@ class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
 
     @property
     def native_value(self) -> float | None:
-        """Return the basin diameter in inches."""
+        """Return the basin diameter in millimeters.
+
+        Using mm as native unit allows Home Assistant to automatically
+        convert to the user's preferred unit system (inches for imperial).
+        """
         info = self.device_data.get("info", {})
-        pump_info = info.get("pumpInfo", {})
-        main_pump = pump_info.get("main", {})
-        diameter = main_pump.get("crockDiameter")
-        if diameter is not None:
+        diameter_mm = info.get("crockDiameterMM")
+        if diameter_mm is not None:
             try:
-                return float(diameter)
+                return float(diameter_mm)
             except (ValueError, TypeError):
                 return None
         return None
@@ -919,8 +937,10 @@ class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
         return {
-            "basin_diameter_mm": info.get("crockDiameterMM"),
+            "basin_diameter_inches": main_pump.get("crockDiameter"),
         }
 
 

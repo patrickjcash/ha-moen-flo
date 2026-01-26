@@ -24,6 +24,33 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _detect_volume_unit(cycles: list[dict[str, Any]]) -> str:
+    """Detect the volume unit from cycle data.
+
+    The API provides emptyVolumeUnits field which can be:
+    - "gal" for gallons (US/imperial)
+    - "L" or "liter" for liters (metric)
+
+    Args:
+        cycles: List of pump cycle dictionaries from API
+
+    Returns:
+        Home Assistant UnitOfVolume constant
+    """
+    for cycle in cycles:
+        unit_str = cycle.get("emptyVolumeUnits", "").lower()
+        if unit_str:
+            if unit_str in ("l", "liter", "liters", "litre", "litres"):
+                return UnitOfVolume.LITERS
+            elif unit_str in ("gal", "gallon", "gallons"):
+                return UnitOfVolume.GALLONS
+            else:
+                _LOGGER.debug("Unknown volume unit from API: %s, defaulting to gallons", unit_str)
+
+    # Default to gallons for backwards compatibility
+    return UnitOfVolume.GALLONS
+
+
 async def async_import_pump_statistics(
     hass: HomeAssistant,
     device_duid: str,
@@ -56,11 +83,14 @@ async def async_import_pump_statistics(
     # Replace hyphens in UUID with underscores for valid statistic_id
     safe_duid = device_duid.replace("-", "_")
 
+    # Detect volume unit from API response (supports both gallons and liters)
+    volume_unit = _detect_volume_unit(cycles)
+
     # Import three separate statistics: total, primary, and backup
     total_imported = 0
-    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "total")
-    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "primary")
-    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "backup")
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "total", volume_unit)
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "primary", volume_unit)
+    total_imported += await _import_stat_type(hass, device_duid, device_name, cycles, safe_duid, "backup", volume_unit)
 
     return total_imported
 
@@ -72,6 +102,7 @@ async def _import_stat_type(
     cycles: list[dict[str, Any]],
     safe_duid: str,
     stat_type: str,
+    volume_unit: str,
 ) -> int:
     """Import statistics for a specific pump type (total, primary, or backup).
 
@@ -82,6 +113,7 @@ async def _import_stat_type(
         cycles: List of pump cycle dictionaries from API
         safe_duid: Device UUID with hyphens replaced by underscores
         stat_type: Type of statistic ("total", "primary", or "backup")
+        volume_unit: Unit of measurement (UnitOfVolume.GALLONS or LITERS)
 
     Returns:
         Number of statistics imported for this type
@@ -97,7 +129,7 @@ async def _import_stat_type(
         statistic_id = f"{DOMAIN}:{safe_duid}_backup_pump_volume"
         stat_name = f"{device_name} Backup Pump Volume"
 
-    # Define metadata
+    # Define metadata with dynamic unit based on API response
     metadata = StatisticMetaData(
         has_mean=False,
         has_sum=True,
@@ -105,7 +137,7 @@ async def _import_stat_type(
         name=stat_name,
         source=DOMAIN,
         statistic_id=statistic_id,
-        unit_of_measurement=UnitOfVolume.GALLONS,
+        unit_of_measurement=volume_unit,
         unit_class="volume",
     )
 
@@ -149,11 +181,12 @@ async def _import_stat_type(
 
         last_sum = last_stat.get("sum", 0.0)
         _LOGGER.debug(
-            "Last imported %s statistic for %s: %s (sum: %.1f gal)",
+            "Last imported %s statistic for %s: %s (sum: %.1f %s)",
             stat_type,
             device_duid,
             last_timestamp,
             last_sum,
+            volume_unit,
         )
 
     # Build statistics from cycles (API returns newest first, we process oldest first)
@@ -252,11 +285,12 @@ async def _import_stat_type(
     if statistics:
         async_add_external_statistics(hass, metadata, statistics)
         _LOGGER.info(
-            "Imported %d %s pump cycle statistics for %s (total: %.1f gallons)",
+            "Imported %d %s pump cycle statistics for %s (total: %.1f %s)",
             len(statistics),
             stat_type,
             device_name,
             cumulative_sum,
+            volume_unit,
         )
         return len(statistics)
     else:
