@@ -5,6 +5,27 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.12] - 2026-02-23
+
+### Fixed
+- **Pump Cycle Detection - Mid-Cycle Poll False Triggers** - Rewrote detection to use a two-phase pending state approach:
+  - Old behavior: Any single 20mm+ jump between consecutive readings immediately updated pump ON/OFF thresholds, causing skewed values when a poll happened mid-pump drain
+  - New behavior: A 20mm+ jump enters a pending state; confirmation requires either the basin distance to start decreasing (pump done, basin refilling) or 2 consecutive flat/noisy readings
+  - pump_on is locked at the pre-jump reading when pending state is entered
+  - pump_off candidate is updated upward if ≥15mm increases continue (pump still draining)
+  - Any distance decrease while pending immediately confirms the cycle (basin refilling = pump done)
+  - Pending state is not persisted across restarts, preventing stale state issues
+
+- **Basin Diameter Sensor** - Prefers `pumpInfo.main.crockDiameter` (converted to mm) over `crockDiameterMM`:
+  - The Moen API can return inconsistent values between these two fields
+  - `pumpInfo.main.crockDiameter` reflects the user-configured value more reliably
+  - Falls back to `crockDiameterMM` if `pumpInfo` is not available
+
+### Changed
+- **Pump Threshold Blending** - Reduced from 80/20 to 95/5 weighting (95% old, 5% new):
+  - 80/20 caused significant drift during high-frequency rain events where many rapid cycles compounded the 20% influence per cycle
+  - 95/5 keeps stored values stable while still allowing gradual adaptation over time
+
 ## [2.4.11] - 2026-01-26
 
 ### Fixed

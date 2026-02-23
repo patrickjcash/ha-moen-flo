@@ -96,6 +96,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._notification_metadata = {}  # Cache notification ID to title mappings per device
         self._pump_thresholds = {}  # Persistent pump on/off thresholds per device
         self._distance_history = {}  # Track last 24 readings per device for event detection
+        self._pending_cycles = {}  # Transient mid-cycle detection state (not persisted)
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)  # Persistent storage for thresholds
 
     async def async_load_thresholds(self) -> None:
@@ -495,8 +496,18 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
     def _detect_pump_events(self, device_duid: str, current_distance: float) -> None:
         """Detect pump cycles from sudden distance increases.
 
-        Detects pump drain events by looking for 20mm+ sudden increases in distance
-        between consecutive readings (the sharp vertical edge when pump drains basin).
+        Uses a two-phase approach to avoid false detections from mid-cycle polls:
+
+        Phase 1 - Entry: A 20mm+ jump enters a pending state, locking pump_on at the
+        pre-jump reading and setting pump_off_candidate to the post-jump reading.
+
+        Phase 2 - Confirmation: Each subsequent reading either:
+          - Updates pump_off_candidate upward (>=15mm increase, pump still draining)
+          - Confirms the cycle immediately (any decrease, basin refilling = pump done)
+          - Increments a stable counter (<15mm change); confirms after 2 stable readings
+
+        Confirmed values are blended into stored thresholds using 95/5 weighting.
+        Pending state is not persisted and is cleared on restart.
 
         Args:
             device_duid: Device UUID
@@ -540,36 +551,73 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
         thresholds = self._pump_thresholds[device_duid]
+        delta = current_distance - previous_distance
+        pending = self._pending_cycles.get(device_duid)
 
-        # Detect pump cycle: 20mm+ sudden increase (pump just drained basin)
-        distance_jump = current_distance - previous_distance
-        if distance_jump >= 20:
-            # Pump just ran: previous reading = pump ON (before drain), current = pump OFF (after drain)
-            pump_on = previous_distance
-            pump_off = current_distance
-
-            old_on = thresholds.get("pump_on_distance")
-            old_off = thresholds.get("pump_off_distance")
-
-            # Blend with previous values using 80/20 weighting
-            if old_on is None or old_off is None:
-                # First cycle detected
-                new_on = int(pump_on)
-                new_off = int(pump_off)
-                _LOGGER.info("Device %s: Detected first pump cycle (ON: %d mm, OFF: %d mm, jump: %d mm)",
-                            device_duid, new_on, new_off, int(distance_jump))
+        if pending is not None:
+            # Phase 2: already in a pending cycle, track until confirmed
+            if delta >= 15:
+                # Pump still draining - update candidate and reset stable counter
+                pending["pump_off"] = current_distance
+                pending["stable_count"] = 0
+                _LOGGER.debug("Device %s: Pump still draining, pump_off candidate now %d mm",
+                              device_duid, int(current_distance))
+            elif delta < 0:
+                # Basin refilling - pump definitely done, confirm immediately
+                self._confirm_pump_cycle(device_duid, pending, thresholds, reason="basin refilling")
+                del self._pending_cycles[device_duid]
             else:
-                # Update with weighted average: 80% old, 20% new
-                new_on = int(0.8 * old_on + 0.2 * pump_on)
-                new_off = int(0.8 * old_off + 0.2 * pump_off)
-                _LOGGER.info("Device %s: Pump cycle detected (jump: %d mm), updating thresholds: ON %d→%d mm, OFF %d→%d mm",
-                            device_duid, int(distance_jump), old_on, new_on, old_off, new_off)
+                # Flat/noisy reading - increment stable counter
+                pending["stable_count"] += 1
+                if pending["stable_count"] >= 2:
+                    self._confirm_pump_cycle(device_duid, pending, thresholds, reason="stable readings")
+                    del self._pending_cycles[device_duid]
+        elif delta >= 20:
+            # Phase 1: large jump detected, enter pending state
+            self._pending_cycles[device_duid] = {
+                "pump_on": previous_distance,
+                "pump_off": current_distance,
+                "stable_count": 0,
+            }
+            _LOGGER.debug("Device %s: Pump cycle started (jump: %d mm), pump_on candidate: %d mm",
+                          device_duid, int(delta), int(previous_distance))
 
-            thresholds["pump_on_distance"] = new_on
-            thresholds["pump_off_distance"] = new_off
-            thresholds["cycle_count"] = thresholds.get("cycle_count", 0) + 1
-            thresholds["last_cycle"] = time.time()
-            self.hass.async_create_task(self.async_save_thresholds())
+    def _confirm_pump_cycle(self, device_duid: str, pending: dict, thresholds: dict, reason: str) -> None:
+        """Confirm a detected pump cycle and blend values into stored thresholds.
+
+        Uses 95/5 weighting (95% old, 5% new) to keep stored values stable
+        across many cycles, particularly during high-frequency rain events.
+
+        Args:
+            device_duid: Device UUID
+            pending: Pending cycle state dict with pump_on and pump_off
+            thresholds: Stored thresholds dict to update in place
+            reason: Human-readable confirmation reason for logging
+        """
+        import time
+
+        pump_on = pending["pump_on"]
+        pump_off = pending["pump_off"]
+
+        old_on = thresholds.get("pump_on_distance")
+        old_off = thresholds.get("pump_off_distance")
+
+        if old_on is None or old_off is None:
+            new_on = int(pump_on)
+            new_off = int(pump_off)
+            _LOGGER.info("Device %s: First pump cycle confirmed (%s) - ON: %d mm, OFF: %d mm",
+                         device_duid, reason, new_on, new_off)
+        else:
+            new_on = int(0.95 * old_on + 0.05 * pump_on)
+            new_off = int(0.95 * old_off + 0.05 * pump_off)
+            _LOGGER.info("Device %s: Pump cycle confirmed (%s) - ON %d→%d mm, OFF %d→%d mm",
+                         device_duid, reason, old_on, new_on, old_off, new_off)
+
+        thresholds["pump_on_distance"] = new_on
+        thresholds["pump_off_distance"] = new_off
+        thresholds["cycle_count"] = thresholds.get("cycle_count", 0) + 1
+        thresholds["last_cycle"] = time.time()
+        self.hass.async_create_task(self.async_save_thresholds())
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
         """Return pump on/off distance thresholds from persistent event detection.

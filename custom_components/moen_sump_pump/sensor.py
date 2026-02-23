@@ -923,8 +923,21 @@ class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
 
         Using mm as native unit allows Home Assistant to automatically
         convert to the user's preferred unit system (inches for imperial).
+
+        Prefers pumpInfo.main.crockDiameter (inches, converted to mm) over
+        crockDiameterMM because the Moen API can return inconsistent values
+        between these two fields, and pumpInfo.main.crockDiameter reflects
+        the user-configured value more reliably.
         """
         info = self.device_data.get("info", {})
+        pump_info = info.get("pumpInfo", {})
+        main_pump = pump_info.get("main", {})
+        diameter_inches = main_pump.get("crockDiameter")
+        if diameter_inches is not None:
+            try:
+                return float(diameter_inches) * 25.4
+            except (ValueError, TypeError):
+                pass
         diameter_mm = info.get("crockDiameterMM")
         if diameter_mm is not None:
             try:
