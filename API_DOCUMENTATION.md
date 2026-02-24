@@ -1,10 +1,52 @@
-# API Reverse Engineering Documentation
+# Moen Smart Sump Pump (NAB) API Documentation
 
-This document details the reverse engineering process and findings for the Moen Flo NAB API.
+This document consolidates all reverse-engineered findings for the Moen Flo NAB (Smart Sump Pump Monitor) API. It is the single source of truth — `API_ENDPOINTS_REFERENCE.md` is superseded by this file.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Authentication](#authentication)
+3. [Lambda Invoker Pattern](#lambda-invoker-pattern)
+4. [Device Identification: Dual ID System](#device-identification-dual-id-system)
+5. [Endpoints](#endpoints)
+   - [Device List](#1-device-list)
+   - [Device Get (Single)](#2-device-get-single)
+   - [Shadow Get (REST)](#3-shadow-get-rest)
+   - [Shadow Update (REST)](#4-shadow-update-rest)
+   - [Environment (Temp/Humidity)](#5-environment-temphumidity)
+   - [Usage History Top-10](#6-usage-history-top-10)
+   - [Pump Cycle Session History](#7-pump-cycle-session-history)
+   - [Event Logs](#8-event-logs)
+   - [Alert Settings by Device](#9-alert-settings-by-device)
+   - [Get Current Alerts V2](#10-get-current-alerts-v2)
+   - [Get Active Alerts V2](#11-get-active-alerts-v2)
+   - [Get Current Alerts V1](#12-get-current-alerts-v1)
+   - [Acknowledge Alert](#13-acknowledge-alert)
+   - [Silence Alert](#14-silence-alert)
+6. [MQTT Connection](#mqtt-connection)
+7. [Data Reference](#data-reference)
+   - [Device Response Fields](#device-response-fields)
+   - [Droplet Object](#droplet-object)
+   - [Alert State Format](#alert-state-format)
+   - [Alert ID Reference](#alert-id-reference)
+8. [Known Limitations](#known-limitations)
+9. [Confirmed Non-Existent Endpoints](#confirmed-non-existent-endpoints)
+10. [Endpoint Naming Patterns](#endpoint-naming-patterns)
+
+---
 
 ## Overview
 
-The Moen Flo NAB (Sump Pump Monitor) uses a serverless architecture with AWS Lambda functions accessed through an API Gateway invoker endpoint. Authentication is handled via AWS Cognito.
+The Moen Flo NAB uses a serverless AWS architecture. All REST API calls are dispatched through a single Lambda invoker endpoint. Real-time device control requires MQTT over AWS IoT.
+
+**Key infrastructure:**
+- Auth: AWS Cognito User Pool (custom token endpoint)
+- API: API Gateway → Lambda invoker → individual Lambda functions
+- Real-time: AWS IoT MQTT (requires Cognito Identity Pool credentials)
+
+---
 
 ## Authentication
 
@@ -15,158 +57,230 @@ POST https://4j1gkf0vji.execute-api.us-east-2.amazonaws.com/prod/v1/oauth2/token
 
 ### Headers
 ```
-Content-Type: application/x-amz-json-1.1
-X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth
+User-Agent: Smartwater-iOS-prod-3.39.0
+Content-Type: application/json
 ```
 
 ### Request Body
 ```json
 {
-  "AuthFlow": "USER_PASSWORD_AUTH",
-  "ClientId": "6qn9pep31dglq6ed4fvlq6rp5t",
-  "AuthParameters": {
-    "USERNAME": "user@example.com",
-    "PASSWORD": "password"
-  }
+  "client_id": "6qn9pep31dglq6ed4fvlq6rp5t",
+  "username": "user@example.com",
+  "password": "password"
 }
 ```
 
 ### Response
 ```json
 {
-  "AuthenticationResult": {
-    "AccessToken": "eyJraWQiOiJ...",
-    "IdToken": "eyJraWQiOiJVc...",
-    "RefreshToken": "eyJjdHkiOiJ...",
-    "ExpiresIn": 3600,
-    "TokenType": "Bearer"
+  "token": {
+    "access_token": "eyJ...",
+    "id_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "expires_in": 3600
   }
 }
 ```
 
 ### Notes
-- `IdToken` is used for API authorization
+- Use `access_token` in `Authorization: Bearer` headers for Lambda invoker calls
+- Use `id_token` for AWS Cognito Identity Pool credential exchange (MQTT)
 - Tokens expire after 1 hour (3600 seconds)
-- No client secret is required (public client)
+- No client secret required (public client)
+
+---
 
 ## Lambda Invoker Pattern
 
-All API calls go through a central invoker endpoint that dispatches to specific Lambda functions.
+All REST API calls POST to a single invoker endpoint that dispatches to specific Lambda functions.
 
-### Invoker Endpoint
+### Endpoint
 ```
 POST https://exo9f857n8.execute-api.us-east-2.amazonaws.com/prod/v1/invoker
 ```
 
 ### Headers
 ```
-Authorization: Bearer {IdToken}
+Authorization: Bearer {access_token}
+User-Agent: Smartwater-iOS-prod-3.39.0
 Content-Type: application/json
 ```
 
 ### Request Structure
 ```json
 {
-  "functionName": "lambda-function-name",
-  "payload": "{\"key\":\"value\"}"
+  "fn": "lambda-function-name",
+  "parse": false,
+  "escape": false,
+  "body": {
+    "key": "value"
+  }
 }
 ```
+
+- `parse`: When `true`, the invoker JSON-parses the Lambda response body for you
+- `escape`: When `true`, enables JSON escaping of the body
 
 ### Response Structure
 ```json
 {
-  "payload": "{\"body\":\"{...}\"}"
+  "StatusCode": 200,
+  "Payload": {
+    "statusCode": 200,
+    "body": { ... }
+  }
 }
 ```
 
-The response contains nested JSON that must be parsed multiple times.
-
-## Critical Discovery: Dual ID System
-
-**This was the key breakthrough in accessing all device data.**
-
-The Moen Flo NAB API uses TWO different identifiers for the same device:
-
-1. **`duid` (Device UUID)** - String UUID format
-   - Example: `"2c6fa88a-1234-5678-9abc-def012345678"`
-   - Used for: Device lists, event logs
-   
-2. **`clientId` (Numeric Client ID)** - Integer format
-   - Example: `123456789`
-   - Used for: Telemetry, environment data, usage statistics
-
-**Why this matters:** Initially, we could only get device info and logs because we were using the UUID everywhere. Temperature, humidity, and pump health data were returning `null` or `404` because those endpoints require the numeric `clientId`, not the UUID.
-
-### How to Get Both IDs
-
-Call the device list endpoint - it returns BOTH IDs:
-
+Response parsing pattern:
 ```python
-response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
-# Response contains array of devices, each with:
-{
-  "duid": "2c6fa88a-1234-5678-9abc-def012345678",  # UUID
-  "clientId": 123456789,                            # Numeric ID
-  "nickname": "Sump Pump",
-  ...
-}
+data = await resp.json()
+if data.get("StatusCode") == 200:
+    payload = data.get("Payload")
+    if isinstance(payload, str):
+        payload = json.loads(payload)       # First parse: sometimes double-encoded
+    if isinstance(payload, dict) and "body" in payload:
+        body = payload["body"]
+        if isinstance(body, str):
+            body = json.loads(body)         # Second parse: body may be a JSON string
+        # body is now the actual data
 ```
 
-## Lambda Functions
+---
+
+## Device Identification: Dual ID System
+
+NAB devices have **two distinct identifiers**. Using the wrong one returns null/404.
+
+| Identifier | Format | Used For |
+|------------|--------|----------|
+| `duid` | UUID string (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) | Device list, event logs, alert endpoints |
+| `clientId` | Integer (e.g., `123456789`) | Shadow API, environment, usage history |
+
+Both IDs are returned by the device list endpoint:
+```python
+devices = invoke_lambda("smartwater-app-device-api-prod-list", {"locale": "en_US"})
+device = [d for d in devices if d.get("deviceType") == "NAB"][0]
+duid      = device["duid"]       # UUID
+client_id = device["clientId"]   # Integer (pass as string to some endpoints)
+```
+
+**Alert endpoints** use the numeric `clientId` (NOT UUID), passed as a string in `pathParameters.duid`. This naming is confusing but confirmed by testing.
+
+---
+
+## Endpoints
 
 ### 1. Device List
+
 **Function:** `smartwater-app-device-api-prod-list`
 
-**Purpose:** Get all devices associated with the account
+**Purpose:** List all devices on the account. Primary source for both device IDs.
 
 **Payload:**
 ```json
-{}
+{"locale": "en_US"}
+```
+
+**Response:** Array of device objects (see [Device Response Fields](#device-response-fields))
+
+---
+
+### 2. Device Get (Single)
+
+**Function:** `smartwater-app-device-api-prod-get`
+
+**Purpose:** Get a single device by `clientId`.
+
+**ID Type:** Numeric `clientId`
+
+**Payload:**
+```json
+{"clientId": 123456789}
+```
+
+**Response:** Same flat structure as a single item from device list. Does NOT wrap the device in a `device.state` envelope. Returns no additional fields beyond what the list endpoint provides.
+
+---
+
+### 3. Shadow Get (REST)
+
+**Function:** `smartwater-app-shadow-api-prod-get`
+
+**Purpose:** Get the AWS IoT device shadow (cached device state).
+
+**ID Type:** Numeric `clientId`
+
+**Payload:**
+```json
+{"clientId": 123456789}
 ```
 
 **Response:**
 ```json
 {
-  "body": {
-    "data": [
-      {
-        "duid": "uuid-here",
-        "clientId": 123456789,
-        "nickname": "Sump Pump",
-        "location": "Basement",
-        "deviceType": "nab",
-        "isConnected": true,
-        "online": true,
-        "fwVersion": "1.2.3",
-        "crockTofDistance": 18.5,
-        "crockDiameter": 18.11,
-        "waterLevelCritical": 6.0,
-        "waterLevelWarning": 8.0,
-        "batteryLevel": 100,
-        "isOnBattery": false,
-        "signalStrength": -65,
-        "lastHeardFromTime": 1234567890,
-        "alerts": []
+  "state": {
+    "reported": {
+      "sens_on": true,
+      "droplet": {
+        "level": 14.2,
+        "trend": -0.5,
+        "floodRisk": 15,
+        "primaryState": "normal",
+        "backupState": "not_running"
+      },
+      "alerts": {
+        "266": {
+          "state": "active_unlack_unrack_unsuppressed",
+          "timestamp": 1736640106624
+        }
       }
-    ]
+    },
+    "desired": {}
   }
 }
 ```
 
-**Key Fields:**
-- `crockTofDistance` - Distance from sensor to water (inches), lower = higher water level
-- `crockDiameter` - Sump pit diameter (inches)
-- `waterLevelCritical` - Critical threshold (inches from sensor)
-- `waterLevelWarning` - Warning threshold (inches from sensor)
-- `isOnBattery` - Battery backup status
-- `signalStrength` - WiFi signal strength (dBm)
+**Notes:**
+- Returns cached state; device is NOT contacted
+- `sens_on` controls whether distance sensor is active (must be `true` for readings)
+- To trigger a live reading, MQTT is required (see [MQTT Connection](#mqtt-connection))
 
-### 2. Environment Data (Temperature/Humidity)
+---
+
+### 4. Shadow Update (REST)
+
+**Function:** `smartwater-app-shadow-api-prod-update`
+
+**Purpose:** Update the device shadow desired/reported state.
+
+**ID Type:** Numeric `clientId`
+
+**Payload:**
+```json
+{
+  "clientId": 123456789,
+  "state": {
+    "reported": {
+      "sens_on": true
+    }
+  }
+}
+```
+
+**Notes:**
+- REST shadow updates do NOT trigger device actions (device doesn't poll REST)
+- For device commands (e.g., activate sensor), use MQTT
+
+---
+
+### 5. Environment (Temp/Humidity)
+
 **Function:** `fbgpg_usage_v1_get_device_environment_latest_prod`
 
-**Purpose:** Get current temperature and humidity readings
+**Purpose:** Get current temperature and humidity readings.
 
-**Critical:** Must use numeric `clientId`, NOT UUID!
+**ID Type:** Numeric `clientId` (as string)
 
 **Payload:**
 ```json
@@ -182,21 +296,23 @@ response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
 {
   "temperature": 64.0,
   "humidity": 48.0,
-  "ts": 1234567890
+  "ts": 1736640106624
 }
 ```
 
-**Units:**
 - Temperature: Fahrenheit
-- Humidity: Percentage (0-100)
+- Humidity: Percentage (0–100)
 - Timestamp: Unix milliseconds
 
-### 3. Pump Health/Capacity
+---
+
+### 6. Usage History Top-10
+
 **Function:** `fbgpg_usage_v1_get_usage_device_history_top10_prod`
 
-**Purpose:** Get pump usage statistics and health metrics
+**Purpose:** Daily pump usage statistics (capacity, cycle counts).
 
-**Critical:** Must use numeric `clientId`, NOT UUID!
+**ID Type:** Numeric `clientId`
 
 **Payload:**
 ```json
@@ -215,7 +331,7 @@ response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
 {
   "data": [
     {
-      "ts": 1234567890,
+      "ts": 1736640106624,
       "pumpCapacityPercentage": 23.5,
       "pumpCycles": 15,
       "date": "2024-01-15"
@@ -224,22 +340,22 @@ response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
 }
 ```
 
-**Key Fields:**
-- `pumpCapacityPercentage` - Percentage of daily pump capacity used
-- `pumpCycles` - Number of pump cycles in the period
-- Returns up to 10 most recent daily records
+---
 
-### 4. Pump Cycle History (CRITICAL DISCOVERY!)
+### 7. Pump Cycle Session History
+
 **Function:** `fbgpg_usage_v1_get_my_usage_device_history_prod`
 
-**Purpose:** Get detailed pump cycle data including water volumes and durations
+**Purpose:** Detailed per-cycle data including fill/empty volumes and durations.
 
-**Critical:** Must use numeric `clientId`, NOT UUID! Must include `type: "session"`!
+**ID Type:** Numeric `clientId` (passed as `duid`)
+
+**Critical:** Must include `"type": "session"` or you get daily aggregates, not per-cycle data.
 
 **Payload:**
 ```json
 {
-  "cognitoIdentityId": "identity-id-here",
+  "cognitoIdentityId": "us-east-2:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "duid": 123456789,
   "type": "session",
   "limit": 10,
@@ -265,28 +381,28 @@ response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
 }
 ```
 
-**Key Fields:**
-- `fillVolume` - Water inflow rate (gallons per minute)
-- `fillTimeMS` - Duration water was filling the basin (milliseconds)
-- `emptyVolume` - Amount of water pumped out (gallons)
-- `emptyTimeMS` - Duration pump was running (milliseconds)
-- `backupRan` - Whether backup pump engaged (boolean)
+- `fillVolume` — Water inflow rate (gallons per minute)
+- `fillTimeMS` — Duration water was filling the basin (ms)
+- `emptyVolume` — Volume pumped out per cycle (gallons)
+- `emptyTimeMS` — How long pump ran (ms)
+- `backupRan` — Whether backup pump engaged
 
-**BREAKTHROUGH:** Using `type: "session"` was the key to unlocking this data! Without this parameter, the endpoint returns empty or different data.
+---
 
-### 5. Device Event Logs
+### 8. Event Logs
+
 **Function:** `fbgpg_logs_v1_get_device_logs_user_prod`
 
-**Purpose:** Get device event history
+**Purpose:** Historical event log with notification IDs and titles.
 
-**Uses:** UUID `duid`, not numeric ID
+**ID Type:** UUID `duid`
 
 **Payload:**
 ```json
 {
-  "cognitoIdentityId": "identity-id-here",
-  "duid": "uuid-here",
-  "limit": 100,
+  "cognitoIdentityId": "us-east-2:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "duid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "limit": 200,
   "locale": "en_US"
 }
 ```
@@ -296,168 +412,142 @@ response = await invoke_lambda("smartwater-app-device-api-prod-list", {})
 {
   "events": [
     {
-      "id": 267,
+      "id": "267",
       "title": "Main Pump Stops Normally",
-      "text": "The main pump has stopped",
-      "time": 1234567890,
+      "text": "The main pump has stopped running.",
+      "time": 1736640106624,
       "severity": "info"
     }
   ]
 }
 ```
 
-**Key Event IDs:**
-- `267` - Main Pump Stops Normally
-- `254` - Critical Flood Alert
-- `256` - High Flood Alert
-- `258` - Flood Risk Alert
-- Other event IDs represent various pump and system events
+**Note:** This endpoint is the only source of notification title metadata. There is no dedicated `/notification-types` endpoint — titles must be mined from event logs.
 
-## Data Mapping
+---
 
-### What's Available
+### 9. Alert Settings by Device
 
-| Metric | Source | ID Type | API Endpoint | Status |
-|--------|--------|---------|--------------|--------|
-| Water Level | Device List | UUID | `device-api-prod-list` | ✅ Available |
-| Temperature | Environment | Numeric | `get_device_environment_latest_prod` | ✅ Available |
-| Humidity | Environment | Numeric | `get_device_environment_latest_prod` | ✅ Available |
-| Pump Health | Usage History | Numeric | `usage_device_history_top10_prod` | ✅ Available |
-| **Gallons Pumped** | **Pump Cycles** | **Numeric** | **`usage_device_history_prod`** | **✅ Available!** |
-| **Water In Rate** | **Pump Cycles** | **Numeric** | **`usage_device_history_prod`** | **✅ Available!** |
-| **Cycle Durations** | **Pump Cycles** | **Numeric** | **`usage_device_history_prod`** | **✅ Available!** |
-| **Backup Pump Status** | **Pump Cycles** | **Numeric** | **`usage_device_history_prod`** | **✅ Available!** |
-| Last Cycle Time | Pump Cycles | Numeric | `usage_device_history_prod` | ✅ Available |
-| Connectivity | Device List | UUID | `device-api-prod-list` | ✅ Available |
-| Power Status | Device List | UUID | `device-api-prod-list` | ✅ Available |
-| Battery Level | Device List | UUID | `device-api-prod-list` | ✅ Available |
-| Alerts | Device List | UUID | `device-api-prod-list` | ✅ Available |
-| Event History | Event Logs | UUID | `get_device_logs_user_prod` | ✅ Available |
+**Function:** `fbgpg_user_v1_alert_settings_by_device_get_prod`
 
-### What's NOT Available
+**Purpose:** Get per-alert notification channel preferences (push, email, voice, text).
 
-| Metric | Reason |
-|--------|--------|
-| Historical water levels | Only current level available (not logged) |
-| Real-time streaming | Poll-based API only |
+**ID Type:** Numeric `clientId` (as string, in `pathParameters.duid`)
 
-**Major Discovery:** The pump cycle endpoint provides comprehensive data including:
-- Exact gallons of water pumped per cycle
-- Water inflow rate (gallons per minute)
-- Fill duration (how long water was entering the basin)
-- Pump run duration (how long pump was running)
-- Backup pump engagement status
-
-This data was previously thought unavailable, but was discovered by using the `type: "session"` parameter.
-
-## API Limits and Best Practices
-
-### Rate Limiting
-- No explicit rate limits documented
-- Recommended polling: Every 5 minutes
-- Avoid excessive requests to prevent throttling
-
-### Error Handling
-- `401` - Token expired, re-authenticate
-- `404` - Wrong endpoint or ID type
-- `500` - Lambda error, retry with backoff
-
-### Response Parsing
-Many responses require multiple levels of JSON parsing:
-```python
-response = await invoke_lambda(...)
-# First parse: API gateway response
-if "payload" in response:
-    payload = json.loads(response["payload"])
-    # Second parse: Lambda response
-    if "body" in payload:
-        body = json.loads(payload["body"])
-        # Now you have the actual data
-        data = body.get("data")
-```
-
-## Testing and Validation
-
-### Test Sequence
-1. Authenticate and get tokens
-2. Get device list (verify both IDs present)
-3. Call environment endpoint with numeric ID
-4. Call pump health endpoint with numeric ID
-5. Call logs endpoint with UUID
-6. Verify all data is present
-
-### Expected Values
-- Temperature: 40-80°F typical for basements
-- Humidity: 30-60% typical
-- Water Level: Varies, but should match app
-- Pump Capacity: 0-100%
-
-## Integration Architecture
-
-### Update Cycle
-```
-Every 5 minutes:
-1. Get device list (both IDs)
-2. Get environment data (numeric ID) → Temp/Humidity
-3. Get pump health (numeric ID) → Daily capacity
-4. Get pump cycles (numeric ID) → Water volumes & durations
-5. Get event logs (UUID) → Event history
-6. Aggregate data in coordinator
-7. Update all entities
-```
-
-### Data Flow
-```
-User Credentials
-    ↓
-Cognito Auth → Access Token + ID Token
-    ↓
-Lambda Invoker → Device List (UUID + Numeric ID)
-    ↓
-    ├→ Environment (Numeric ID) → Temp/Humidity
-    ├→ Pump Health (Numeric ID) → Daily Capacity
-    ├→ Pump Cycles (Numeric ID) → Gallons/Durations/Rates
-    └→ Event Logs (UUID) → Event History
-    ↓
-Coordinator → Cache all data
-    ↓
-Entities (Sensors + Binary Sensors)
-```
-
-## Security Considerations
-
-### Credentials
-- Username and password stored in Home Assistant's encrypted storage
-- Tokens stored in memory, not persisted
-- No third-party servers involved
-
-### API Communication
-- All communication over HTTPS
-- Tokens in Authorization headers
-- Standard AWS Cognito security model
-
-## Future Enhancements
-
-### Potential Additions
-1. **Historical Data**: Store and graph past water levels
-2. **Cycle Analysis**: Calculate cycle duration from log events
-3. **Gallons Tracking**: Implement local calculation using pit dimensions
-4. **Predictive Alerts**: ML-based flood risk prediction
-5. **Multi-Device Support**: Handle multiple sump pumps
-
-### API Opportunities
-- Explore other Lambda functions in the app
-- Check for batch/bulk data endpoints
-- Investigate websocket/push notification capabilities
-
-## Additional Endpoints Discovered (2026-01-11)
-
-### Alert Management
-
-#### Acknowledge Alert
-**Function:** `fbgpg_alerts_v1_acknowledge_alert_prod`
-**Purpose:** Mark alert as acknowledged/seen
 **Payload:**
+```json
+{
+  "pathParameters": {
+    "duid": "123456789"
+  }
+}
+```
+
+**Response:** Array of alert setting objects:
+```json
+[
+  {
+    "alertTypeId": 224,
+    "push": true,
+    "email": true,
+    "voice": false,
+    "text": false,
+    "args": ["223", "225"]
+  }
+]
+```
+
+- Returns ~20 alert type IDs per device
+- The `args` field on some alerts contains related alert IDs (e.g., alert 224 "High Water Level" has args referencing the low/normal threshold alert IDs)
+- Passing the UUID `duid` returns empty results; numeric `clientId` is required
+
+---
+
+### 10. Get Current Alerts V2
+
+**Function:** `fbgpg_alerts_v2_get_alerts_current_by_user_prod`
+
+**Purpose:** Get only unacknowledged alerts. **Recommended for HA integration.**
+
+**Payload:**
+```json
+{}
+```
+
+**Response:**
+```json
+{
+  "alerts": [
+    {
+      "id": "266",
+      "duid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "time": "2026-01-12T00:21:46.624Z",
+      "state": "active_unlack_unrack_unsuppressed",
+      "severity": "warning",
+      "title": "Main Pump Not Stopping",
+      "text": "The main pump will not stop running...",
+      "detailsObject": {
+        "flags": ["allow_active_rem_ack", "notify", "push", "email"],
+        "priority": 80
+      },
+      "dismiss": true,
+      "silence": false
+    }
+  ]
+}
+```
+
+- `dismiss: true` → Alert can be dismissed via the acknowledge endpoint
+- `dismiss: false` → Alert cannot be manually dismissed (resolves when condition clears)
+- Acknowledged alerts are automatically excluded from this endpoint's results
+
+---
+
+### 11. Get Active Alerts V2
+
+**Function:** `fbgpg_alerts_v2_get_alerts_active_by_user_prod`
+
+**Purpose:** Get ALL active alerts including acknowledged ones.
+
+**Payload:** `{}`
+
+**Response:** Same structure as V2 current endpoint.
+
+**Note:** Do not use for display — includes acknowledged alerts that should be hidden from users.
+
+---
+
+### 12. Get Current Alerts V1
+
+**Function:** `fbgpg_alerts_v1_get_alerts_current_by_user_prod`
+
+**Purpose:** V1 alert retrieval. Returns different structure; lacks `dismiss`/`silence` fields.
+
+**Payload:** `{}`
+
+**Response includes:** `active`, `localAck`, `remoteAck`, `suppressed`, `actions` fields (different schema from V2).
+
+---
+
+### 13. Acknowledge Alert
+
+**Function:** `fbgpg_alerts_v1_acknowledge_alert_prod`
+
+**Purpose:** Mark an alert as acknowledged (changes `unlack` → `lack` in shadow state).
+
+**ID Type:** Numeric `clientId` AS STRING, in `pathParameters.duid`
+
+**Payload:**
+```json
+{
+  "pathParameters": {
+    "duid": "123456789",
+    "alertEventId": "266"
+  }
+}
+```
+
+**Invoker format** (use `parse: true, escape: true`):
 ```json
 {
   "fn": "fbgpg_alerts_v1_acknowledge_alert_prod",
@@ -465,87 +555,293 @@ Entities (Sensors + Binary Sensors)
   "escape": true,
   "body": {
     "pathParameters": {
-      "duid": "device-uuid",
-      "alertEventId": "262"
+      "duid": "123456789",
+      "alertEventId": "266"
     }
   }
 }
 ```
-**Response:** HTTP 204 No Content
-**Status:** ⚠️ Returns success but effect unclear
 
-#### Silence Alert
+**Response:** HTTP 204 No Content
+
+**Effect:**
+- Alert state: `active_unlack_unrack_unsuppressed` → `active_lack_unrack_unsuppressed`
+- Alert's `dismiss` field changes from `true` to `false`
+- Alert is removed from `fbgpg_alerts_v2_get_alerts_current_by_user_prod` results
+- Alert remains visible in device shadow and Moen app (does NOT fully dismiss)
+
+---
+
+### 14. Silence Alert
+
 **Function:** `fbgpg_alerts_v1_silence_alert_prod`
-**Purpose:** Silence/dismiss alert
-**Payload:** Same as acknowledge
+
+**Purpose:** Silence/suppress an alert. Functionally identical to acknowledge.
+
+**Payload:** Same as acknowledge alert.
+
 **Response:** HTTP 204 No Content
-**Status:** ⚠️ Returns success but alert remains visible
 
-#### Get Alerts Endpoints
-- `fbgpg_alerts_v1_get_alerts_by_user_prod` - All alerts for user
-- `fbgpg_alerts_v1_get_alerts_current_by_user_prod` - Current alerts
-- `fbgpg_alerts_v2_get_alerts_active_by_user_prod` - Active alerts (V2)
-- `fbgpg_v1_get_alerts_by_duid_prod` - Alerts by device UUID
+**Effect:** Identical to `fbgpg_alerts_v1_acknowledge_alert_prod`.
 
-#### Alert Settings
-- `fbgpg_user_v1_alert_settings_by_device_get_prod` - Get alert settings
-- `fbgpg_user_v1_alert_settings_update_prod` - Update alert settings
+---
 
-### Device Management
+## MQTT Connection
 
-- `fbgpg_device_v1_get_device_prod` - Get device details (NAB)
-- `fbgpg_device_v1_update_attribute_prod` - Update device attributes
-- `fbgpg_device_v1_device_get_latest_firmware_prod` - Check firmware updates
-- `fbgpg_device_v1_get_backup_test_status_prod` - Backup pump test status
+Real-time device reading triggers (e.g., activating `sens_on`) require MQTT over AWS IoT. REST shadow updates do not command the device.
 
-### Usage & Environment
+### Setup
 
-- `fbgpg_usage_v1_get_my_usage_device_history_top10_prod` - Top 10 usage periods
-- `fbgpg_usage_v1_get_last_usage_prod` - Most recent usage
-- `fbgpg_usage_v1_put_usage_reset_device_capacity_prod` - Reset capacity tracking
-- `fbgpg_usage_v1_get_device_environment_latest_prod` - Environment data (temp/humidity)
+1. **Exchange Cognito tokens for Identity credentials:**
+```python
+import boto3
 
-### User Settings
+cognito_client = boto3.client("cognito-identity", region_name="us-east-2")
+identity_pool_id = "us-east-2:7880fbef-a3a8-4ffc-a0d1-74e686e79c80"
+user_pool_provider = "cognito-idp.us-east-2.amazonaws.com/us-east-2_Cqk5OcQJh"
 
-- `fbgpg_user_v1_user_settings_get_prod` - Get user preferences
-- `fbgpg_user_v1_user_settings_put_prod` - Update preferences
+# Get identity ID
+identity_resp = cognito_client.get_id(
+    IdentityPoolId=identity_pool_id,
+    Logins={user_pool_provider: id_token}
+)
+identity_id = identity_resp["IdentityId"]
 
-### Endpoint Naming Patterns
+# Get credentials
+creds_resp = cognito_client.get_credentials_for_identity(
+    IdentityId=identity_id,
+    Logins={user_pool_provider: id_token}
+)
+credentials = creds_resp["Credentials"]
+# credentials["AccessKeyId"], credentials["SecretKey"], credentials["SessionToken"]
+```
 
-**Legacy:** `smartwater-app-{service}-api-prod-{action}`
-**New (FBGPG):** `fbgpg_{service}_v{version}_{action}_{environment}`
+2. **Connect via MQTT:**
+```python
+import aiomqtt
 
-**Service Codes:**
-- `alerts` - Alert management
-- `device` - Device control
-- `usage` - Statistics/history
-- `logs` - Event logging
-- `user` - Settings/preferences
+MQTT_ENDPOINT = "a1p3vgpxlnkaa2-ats.iot.us-east-2.amazonaws.com"
+MQTT_PORT = 443
+SHADOW_TOPIC = f"$aws/things/{client_id}/shadow/update"
 
-### Investigation Notes
+async with aiomqtt.Client(
+    hostname=MQTT_ENDPOINT,
+    port=MQTT_PORT,
+    transport="websockets",
+    websocket_path="/mqtt",
+    # ... SigV4 auth headers using credentials
+) as client:
+    await client.publish(
+        SHADOW_TOPIC,
+        json.dumps({"state": {"desired": {"sens_on": True}}})
+    )
+```
 
-All endpoints discovered via decompiled Android app analysis (`/Users/patrick/python/base/sources/com/moen/smartwater/base/utils/ConstantsKt.java`).
+### Shadow Topics
+```
+$aws/things/{clientId}/shadow/update           # Publish desired state
+$aws/things/{clientId}/shadow/update/accepted  # Subscribe for confirmation
+$aws/things/{clientId}/shadow/get              # Request current shadow
+$aws/things/{clientId}/shadow/get/accepted     # Subscribe for shadow response
+```
 
-Alert dismissal endpoints (acknowledge/silence) return 204 success but don't visibly dismiss alerts - requires further investigation. See `tests/ALERT_DISMISSAL_INVESTIGATION.md` for detailed findings.
+---
 
-## Reverse Engineering Tools Used
+## Data Reference
 
-1. **mitmproxy** - Intercept HTTPS traffic from mobile app
-2. **jadx** - Decompile Android APK
-3. **Frida** - Runtime inspection and SSL pinning bypass
-4. **Postman** - Test API endpoints
-5. **Python requests** - Validate findings
+### Device Response Fields
 
-## Credits
+Fields returned by `smartwater-app-device-api-prod-list` and `smartwater-app-device-api-prod-get`:
 
-This reverse engineering effort involved:
-- Analysis of network traffic from the Moen mobile app
-- Decompilation of the Android application
-- Trial and error with various Lambda functions
-- Collaboration between Claude and Gemini AI assistants
+| Field | Type | Description |
+|-------|------|-------------|
+| `duid` | string | UUID device identifier |
+| `clientId` | integer | Numeric device identifier |
+| `nickname` | string | User-assigned device name |
+| `location` | string | Location description |
+| `deviceType` | string | `"NAB"` for sump pump monitors |
+| `connected` | boolean | Device online status |
+| `batteryPercentage` | integer | Battery charge (0–100) |
+| `powerSource` | string | Power source description |
+| `wifiRssi` | integer | WiFi signal strength (dBm, negative) |
+| `fwVersion` | string | Firmware version string |
+| `crockTofDistance` | float | Distance from sensor to water surface (inches). Lower = higher water level. |
+| `crockDiameter` | float | Sump pit diameter (inches) |
+| `droplet` | object | Computed flood risk state (see below) |
+| `federatedIdentity` | string | Cognito Identity ID (used for MQTT auth and some Lambda calls) |
+| `lastHeardFromTime` | integer | Timestamp of last device communication (Unix ms) |
+| `alerts` | array | Active alert summaries |
 
-The critical breakthrough (dual ID system) was discovered by testing different ID formats across all endpoints.
+**Fields that do NOT exist** (do not use these):
+- ~~`waterLevelCritical`~~ — Does not exist in any API endpoint
+- ~~`waterLevelWarning`~~ — Does not exist in any API endpoint
+- ~~`isConnected`~~ — Use `connected`
+- ~~`batteryLevel`~~ — Use `batteryPercentage`
+- ~~`isOnBattery`~~ — Use `powerSource`
+- ~~`signalStrength`~~ — Use `wifiRssi`
+
+---
+
+### Droplet Object
+
+The `droplet` object appears in both the device list and device shadow. It represents the Moen backend's computed flood risk assessment:
+
+```json
+{
+  "level": 14.2,
+  "trend": -0.5,
+  "floodRisk": 15,
+  "primaryState": "normal",
+  "backupState": "not_running"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `level` | float | Current water level (inches from floor, not sensor) |
+| `trend` | float | Rate of change (inches/hour, negative = falling) |
+| `floodRisk` | integer | Risk score (0–100) |
+| `primaryState` | string | Main pump state (`"normal"`, `"running"`, etc.) |
+| `backupState` | string | Backup pump state (`"not_running"`, `"running"`, etc.) |
+
+Water level thresholds (critical/warning) are computed server-side and published only as part of `floodRisk`. They are not configurable via API and not exposed as raw values.
+
+---
+
+### Alert State Format
+
+Alert states follow the pattern: `{activity}_{ack}_{rack}_{suppressed}`
+
+| Component | Values | Meaning |
+|-----------|--------|---------|
+| activity | `active` / `inactive` | Whether the condition is currently occurring |
+| ack | `unlack` / `lack` | Whether user has acknowledged (`lack` = acknowledged) |
+| rack | `unrack` / `rack` | Unknown purpose (possibly "re-acknowledged") |
+| suppressed | `unsuppressed` / `suppressed` | Whether alert is suppressed/muted |
+
+**Examples:**
+- `active_unlack_unrack_unsuppressed` — New unacknowledged active alert (shown in app)
+- `active_lack_unrack_unsuppressed` — Active but acknowledged (API acknowledge result)
+- `inactive_unlack_unrack_unsuppressed` — Condition resolved, not yet acknowledged
+
+---
+
+### Alert ID Reference
+
+Alert IDs from two sources:
+1. **`fbgpg_user_v1_alert_settings_by_device_get_prod`** — Comprehensive list of IDs configured on device
+2. **`fbgpg_logs_v1_get_device_logs_user_prod`** — Titles and severities from event history
+
+| ID | Title | Severity | Source |
+|----|-------|----------|--------|
+| 213 | (unknown) | — | Alert settings |
+| 218 | Backup Test Scheduled | info | Event logs |
+| 222 | (unknown) | — | Alert settings |
+| 224 | High Water Level | warning | Event logs + alert settings |
+| 225 | Normal Water Level | info | Event logs |
+| 230 | (unknown) | — | Alert settings |
+| 232 | (unknown) | — | Alert settings |
+| 236 | Sensor Too Close | critical | Event logs |
+| 250 | (unknown) | — | Alert settings |
+| 254 | Critical Flood Risk | critical | Event logs + alert settings |
+| 256 | High Flood Risk | critical | Event logs + alert settings |
+| 258 | Flood Risk | warning | Event logs + alert settings |
+| 259 | Flood Risk Cleared | info | Event logs |
+| 260 | Main Pump Failed | critical | Event logs + alert settings |
+| 261 | Main Pump Reset | info | Event logs |
+| 262 | Main Pump Overwhelmed | critical | Event logs + alert settings |
+| 263 | Main Pump Recovered | info | Event logs |
+| 266 | Main Pump Not Stopping | warning | Event logs + alert settings |
+| 267 | Main Pump Stops Normally | info | Event logs |
+| 268 | (unknown) | — | Alert settings |
+| 269 | Backup Pump Reset | info | Event logs |
+| 270 | (unknown) | — | Alert settings |
+| 301 | (unknown) | — | Alert settings (North pump args) |
+| 1716 | (unknown) | — | Alert settings |
+| 1718 | (unknown) | — | Alert settings |
+| 1720 | (unknown) | — | Alert settings |
+| 1722 | (unknown) | — | Alert settings |
+| 2802 | (unknown) | — | Alert settings |
+| 2803 | (unknown) | — | Alert settings |
+
+**Additional notification types seen in the Moen app** (not yet observed in event logs):
+- Dead Battery (critical)
+- Backup Test Failed (critical)
+- Overflow Water Level (critical)
+- Water Detected (critical)
+- Backup Pump Failed (critical)
+- Backup Pump Overwhelmed (warning)
+- Device Lost (warning)
+- Water Level Sensor Communication Lost (warning)
+- Main Power Lost (warning)
+- Low Battery (warning)
+- Possible Drain Backflow (warning)
+- Main Power Restored (info)
+- Check Battery Water Level (info)
+- Network Connected (info)
+
+---
+
+## Known Limitations
+
+1. **No water level threshold API**: `waterLevelCritical` and `waterLevelWarning` do **not** exist in any API endpoint. They were incorrectly documented in an earlier version of this file. Water level risk is expressed only through the `droplet.floodRisk` score (0–100), computed server-side.
+
+2. **No dedicated notification metadata endpoint**: No `/notification-types` or equivalent Lambda function exists. Notification titles must be mined from event logs. See `NOTIFICATION_DISCOVERY.md`.
+
+3. **Alert dismissal is partial**: API acknowledge/silence (`lack`) does not fully dismiss alerts. Manual dismissal in the Moen app removes alerts from shadow entirely; API acknowledge only changes the `unlack`→`lack` component while the alert remains in shadow.
+
+4. **No historical water level data**: Only current sensor distance (`crockTofDistance`) is available. The API does not store or return historical water level readings.
+
+5. **REST shadow updates don't command device**: To trigger a live sensor reading (`sens_on`), MQTT is required. REST shadow writes are ignored by the device.
+
+6. **`fbgpg_alerts_v1_get_alert_types_prod` does not exist**: Confirmed Lambda `ResourceNotFoundException`.
+
+7. **`type: "session"` required for per-cycle data**: Without this parameter, `fbgpg_usage_v1_get_my_usage_device_history_prod` returns daily aggregates instead of per-cycle records.
+
+---
+
+## Confirmed Non-Existent Endpoints
+
+These Lambda function names were tested and returned `ResourceNotFoundException` or equivalent errors:
+
+- `fbgpg_alerts_v1_get_alert_types_prod`
+- `smartwater-app-location-api-prod-list`
+- `smartwater-app-house-api-prod-list`
+- `fbgpg_location_v1_get_locations_prod`
+- `fbgpg_house_v1_get_houses_prod`
+- `smartwater-app-user-api-prod-locations`
+- `smartwater-app-user-api-prod-houses`
+
+---
+
+## Endpoint Naming Patterns
+
+Two generations of naming exist:
+
+| Pattern | Example | Era |
+|---------|---------|-----|
+| `smartwater-app-{service}-api-prod-{action}` | `smartwater-app-device-api-prod-list` | Legacy |
+| `fbgpg_{service}_v{ver}_{action}_prod` | `fbgpg_usage_v1_get_my_usage_device_history_prod` | Current |
+
+**Service codes (fbgpg):**
+- `alerts` — Alert management and retrieval
+- `device` — Device control and attributes
+- `usage` — Statistics and session history
+- `logs` — Event logging
+- `user` — User settings and preferences
+
+---
+
+## Reverse Engineering Methods
+
+1. **Decompiled Android APK** (jadx) — Primary source for Lambda function names and payload structures. Key files:
+   - `com/moen/smartwater/base/utils/ConstantsKt.java` — All endpoint name constants
+   - `com/moen/smartwater/base/data/repositories/AlertRepository.java` — Alert payload structures
+2. **HTTPS traffic interception** (mitmproxy with SSL pinning bypass via Frida)
+3. **Exhaustive endpoint testing** — Permuting known patterns against all discovered function names
+
+---
 
 ## Disclaimer
 
-This documentation is provided for educational and integration purposes only. The Moen Flo API is not officially public, and this integration is not endorsed by Moen or Fortune Brands. Use at your own risk.
+This documentation is provided for educational and Home Assistant integration purposes only. The Moen Flo API is not officially public. This integration is not endorsed by Moen or Fortune Brands. Use at your own risk.
