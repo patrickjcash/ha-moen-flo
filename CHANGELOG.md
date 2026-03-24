@@ -5,6 +5,14 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13b0] - 2026-03-24
+
+### Added
+- **Estimated Next Pump Run sensor** — new TIMESTAMP sensor powered by the `fbgpg_usage_v1_get_last_usage_prod` endpoint, showing when the Moen backend estimates the next pump cycle will occur. Includes a `time_until_next_run` attribute (e.g., `"1h 22m"`).
+
+### Fixed
+- **Last Cycle sensor staleness** — the integration now calls `fbgpg_usage_v1_get_last_usage_prod` (previously unused) before fetching session history on each poll. This endpoint is likely what the Moen app calls when opening the history view, which may trigger backend session processing and resolve the issue where the Last Cycle sensor would not update until the user manually opened the Moen app. The Last Cycle timestamp now also takes the `lastOutgoTime` from this endpoint when it is more recent than the session history.
+
 ## [2.4.12] - 2026-02-23
 
 ### Fixed

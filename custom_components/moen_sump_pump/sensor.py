@@ -29,6 +29,19 @@ from .const import ALERT_CODES, DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _parse_iso(date_str: str) -> datetime | None:
+    """Parse an ISO 8601 timestamp string, returning a timezone-aware datetime or None."""
+    try:
+        if date_str.endswith("Z"):
+            date_str = date_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(date_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -564,17 +577,6 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
         than the full session history after a new cycle completes), with the
         session history as fallback.
         """
-        def _parse_iso(date_str: str) -> datetime | None:
-            try:
-                if date_str.endswith("Z"):
-                    date_str = date_str.replace("Z", "+00:00")
-                dt = datetime.fromisoformat(date_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-            except (ValueError, TypeError):
-                return None
-
         # Primary: last_usage endpoint (lightweight summary, may update sooner)
         last_usage = self.device_data.get("last_usage", {})
         last_usage_time = _parse_iso(last_usage.get("lastOutgoTime", ""))
@@ -640,18 +642,7 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
     def native_value(self) -> datetime | None:
         """Return the estimated next pump cycle time."""
         last_usage = self.device_data.get("last_usage", {})
-        date_str = last_usage.get("estimatedNextRun", "")
-        if not date_str:
-            return None
-        try:
-            if date_str.endswith("Z"):
-                date_str = date_str.replace("Z", "+00:00")
-            dt = datetime.fromisoformat(date_str)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except (ValueError, TypeError):
-            return None
+        return _parse_iso(last_usage.get("estimatedNextRun", ""))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
