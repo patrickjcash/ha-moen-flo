@@ -42,6 +42,17 @@ async def async_setup_entry(
             MoenFloNABDismissAlertsButton(coordinator, device_duid, device_name)
         )
 
+        # Reset Pump Status Buttons
+        entities.append(
+            MoenFloNABResetPrimaryPumpButton(coordinator, device_duid, device_name)
+        )
+
+        pump_info = device_info.get("pumpInfo", {})
+        if pump_info.get("hasBackupPump"):
+            entities.append(
+                MoenFloNABResetBackupPumpButton(coordinator, device_duid, device_name)
+            )
+
     async_add_entities(entities)
 
 
@@ -124,3 +135,73 @@ class MoenFloNABDismissAlertsButton(MoenFloNABButtonBase):
 
         except Exception as err:
             _LOGGER.error("Failed to dismiss alerts: %s", err)
+
+
+class MoenFloNABResetPrimaryPumpButton(MoenFloNABButtonBase):
+    """Button to reset primary pump status (clears 'Main Pump Not Stopping' class alerts)."""
+
+    _attr_icon = "mdi:pump"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_reset_primary_pump"
+        self._attr_name = f"{device_name} Reset Primary Pump Status"
+
+    async def async_press(self) -> None:
+        """Send rst_primary shadow command to the device."""
+        client_id = self.device_data.get("clientId")
+        if not client_id:
+            _LOGGER.error("No client ID found for device %s", self.device_duid)
+            return
+
+        _LOGGER.info("Resetting primary pump status for device %s", self.device_duid)
+        try:
+            success = await self.coordinator.client.reset_pump_status(client_id, pump="primary")
+            if success:
+                _LOGGER.info("Primary pump status reset accepted for device %s", self.device_duid)
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.warning("Primary pump status reset may not have been accepted for device %s", self.device_duid)
+        except Exception as err:
+            _LOGGER.error("Failed to reset primary pump status: %s", err)
+
+
+class MoenFloNABResetBackupPumpButton(MoenFloNABButtonBase):
+    """Button to reset backup pump status (clears 'Backup Pump Not Stopping' class alerts)."""
+
+    _attr_icon = "mdi:pump"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_reset_backup_pump"
+        self._attr_name = f"{device_name} Reset Backup Pump Status"
+
+    async def async_press(self) -> None:
+        """Send rst_backup shadow command to the device."""
+        client_id = self.device_data.get("clientId")
+        if not client_id:
+            _LOGGER.error("No client ID found for device %s", self.device_duid)
+            return
+
+        _LOGGER.info("Resetting backup pump status for device %s", self.device_duid)
+        try:
+            success = await self.coordinator.client.reset_pump_status(client_id, pump="backup")
+            if success:
+                _LOGGER.info("Backup pump status reset accepted for device %s", self.device_duid)
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.warning("Backup pump status reset may not have been accepted for device %s", self.device_duid)
+        except Exception as err:
+            _LOGGER.error("Failed to reset backup pump status: %s", err)

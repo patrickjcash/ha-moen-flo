@@ -5,6 +5,25 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13b3] - 2026-03-24
+
+### Fixed
+- **Last Cycle staleness** — coordinator now calls `fbgpg_usage_v1_get_my_usage_device_history_top10_prod` (with `parse=True, escape=True`) before each cycle history fetch, mirroring what the Moen app's overview screen does via `PumpCapacityRepository`. This is one of the two app behaviors believed to trigger backend session processing. Also restored `parse=True, escape=True` on the main history endpoint to match `SessionDataFragment` behavior.
+- **401 retry lost parse/escape flags** — re-authentication retry now correctly forwards all request parameters.
+- **Cycles not sorted** — cycle list is now explicitly sorted newest-first so `cycles[0]` is always the most recent regardless of API return order.
+- **Statistics import ran every poll** — now only imports when a new cycle date is detected, reducing overhead.
+
+## [2.4.13b2] - 2026-03-24
+
+### Fixed
+- Intermediate beta; superseded by b3.
+
+## [2.4.13b1] - 2026-03-24
+
+### Added
+- **Reset Primary Pump Status button** — clears Pathway 2 alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via the normal Dismiss Alerts button. Equivalent to View Device → Primary Pump → Reset Primary Pump Status in the Moen app.
+- **Reset Backup Pump Status button** — same as above for the backup pump. Only appears if a backup pump is configured (`pumpInfo.hasBackupPump`).
+
 ## [2.4.13b0] - 2026-03-24
 
 ### Added

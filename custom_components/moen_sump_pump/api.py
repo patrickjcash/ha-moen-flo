@@ -110,16 +110,17 @@ class MoenFloNABClient:
             await self.authenticate()
 
     async def _invoke_lambda(
-        self, function_name: str, payload: Optional[Dict[str, Any]] = None
+        self, function_name: str, payload: Optional[Dict[str, Any]] = None,
+        parse: bool = False, escape: bool = False
     ) -> Dict[str, Any]:
         """Invoke a Lambda function through the invoker API."""
         await self._ensure_authenticated()
 
         request_payload = {
-            "parse": False,
+            "parse": parse,
             "body": payload or {},
             "fn": function_name,
-            "escape": False
+            "escape": escape
         }
 
         headers = {
@@ -135,7 +136,7 @@ class MoenFloNABClient:
                 if response.status == 401:
                     _LOGGER.warning("Received 401, re-authenticating")
                     await self.authenticate()
-                    return await self._invoke_lambda(function_name, payload)
+                    return await self._invoke_lambda(function_name, payload, parse=parse, escape=escape)
 
                 if response.status != 200:
                     error_text = await response.text()
@@ -394,6 +395,33 @@ class MoenFloNABClient:
         )
         return response if isinstance(response, dict) else {}
 
+    async def reset_pump_status(self, client_id: int, pump: str = "primary") -> bool:
+        """Send a pump status reset command via the device shadow.
+
+        This is equivalent to pressing "Reset Primary/Backup Pump Status" in the
+        Moen app under View Device -> Primary/Backup Pump. It clears Pathway 2
+        alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via the
+        normal acknowledge API.
+
+        Args:
+            client_id: Numeric device client ID.
+            pump: "primary" or "backup".
+
+        Returns:
+            True if the command was accepted, False otherwise.
+        """
+        crock_command = "rst_primary" if pump == "primary" else "rst_backup"
+        response = await self._invoke_lambda(
+            "smartwater-app-shadow-api-prod-update",
+            {"clientId": str(client_id), "payload": {"crockCommand": crock_command}},
+            parse=True,
+            escape=True,
+        )
+        # The Lambda returns {"status": true} on success (parsed as {"status": True})
+        if isinstance(response, dict):
+            return bool(response.get("status"))
+        return bool(response)
+
     async def get_pump_cycles(
         self, client_id: int, limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -417,15 +445,47 @@ class MoenFloNABClient:
             "locale": "en_US"
         }
         
+        # parse=True, escape=True matches the Android app (SessionDataFragment)
+        # and appears to be required to trigger backend session processing.
         response = await self._invoke_lambda(
-            "fbgpg_usage_v1_get_my_usage_device_history_prod", payload
+            "fbgpg_usage_v1_get_my_usage_device_history_prod", payload,
+            parse=True, escape=True
         )
-        
+
         # Extract usage array from response
         if isinstance(response, dict) and "usage" in response:
-            return response["usage"]
-        
-        return []
+            cycles = response["usage"]
+        elif isinstance(response, list):
+            cycles = response
+        else:
+            return []
+
+        # Sort newest-first so cycles[0] is always the most recent
+        try:
+            cycles.sort(key=lambda c: c.get("date", ""), reverse=True)
+        except Exception:
+            pass
+
+        return cycles
+
+    async def trigger_session_processing(self, client_id: int) -> None:
+        """Call the top-10 history endpoint as the app's overview screen does.
+
+        The Moen app calls fbgpg_usage_v1_get_my_usage_device_history_top10_prod
+        via PumpCapacityRepository when loading the overview. This appears to be
+        one of the triggers that causes the backend to process raw sensor data
+        into completed sessions. We call it before fetching full cycle history
+        so fresh sessions are available.
+        """
+        payload = {
+            "cognitoIdentityId": self._cognito_identity_id,
+            "duid": str(client_id),
+            "type": "session",
+        }
+        await self._invoke_lambda(
+            "fbgpg_usage_v1_get_my_usage_device_history_top10_prod", payload,
+            parse=True, escape=True
+        )
 
     async def get_device_logs(
         self, device_duid: str, limit: int = 100

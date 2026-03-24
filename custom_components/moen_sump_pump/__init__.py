@@ -98,6 +98,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         self._distance_history = {}  # Track last 24 readings per device for event detection
         self._pending_cycles = {}  # Transient mid-cycle detection state (not persisted)
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)  # Persistent storage for thresholds
+        self._last_cycle_date = {}  # Most recent cycle date seen per device
 
     async def async_load_thresholds(self) -> None:
         """Load pump thresholds and distance history from persistent storage."""
@@ -309,14 +310,23 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Get pump cycle history using numeric ID
                 try:
+                    # Mirror what the app's overview screen does: call the top-10 endpoint
+                    # first. This appears to trigger backend session processing so that
+                    # the full history fetch below returns up-to-date data.
+                    try:
+                        await self.client.trigger_session_processing(client_id)
+                    except Exception as trigger_err:
+                        _LOGGER.debug("trigger_session_processing failed for %s: %s", device_duid, trigger_err)
+
                     # On first refresh, fetch all available cycles for statistics import
                     # On subsequent updates, fetch last 50 cycles for incremental updates
                     limit = 1000 if self._first_refresh else 50
                     cycles = await self.client.get_pump_cycles(client_id, limit=limit)
                     device_data["pump_cycles"] = cycles
 
-                    # Import statistics on first refresh or when we have new cycles
-                    if cycles and (self._first_refresh or len(cycles) > 0):
+                    # Import statistics only when there are new cycles
+                    latest_date = cycles[0].get("date", "") if cycles else ""
+                    if cycles and (self._first_refresh or latest_date != self._last_cycle_date.get(device_duid)):
                         device_name = device.get("nickname", f"Sump Pump {device_duid[:8]}")
                         await async_import_pump_statistics(
                             self.hass,
@@ -324,6 +334,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                             device_name,
                             cycles,
                         )
+                        self._last_cycle_date[device_duid] = latest_date
 
                 except Exception as err:
                     _LOGGER.warning(
