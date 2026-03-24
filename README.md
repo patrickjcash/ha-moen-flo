@@ -156,6 +156,7 @@ HACS (Home Assistant Community Store) makes installation and updates easy.
 ## Configuration
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=moen_sump_pump)
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/ha-moen-flo)
 
 1. Click the badge above to add the integration directly, OR navigate to **Settings** → **Devices & Services**
 2. Click the **+ Add Integration** button
