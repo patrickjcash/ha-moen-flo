@@ -85,6 +85,7 @@ async def async_setup_entry(
 
         # Last Cycle Sensor
         entities.append(MoenFloNABLastCycleSensor(coordinator, device_duid, device_name))
+        entities.append(MoenFloNABEstimatedNextRunSensor(coordinator, device_duid, device_name))
 
         # Diagnostic Sensors
         entities.append(MoenFloNABBatterySensor(coordinator, device_duid, device_name))
@@ -557,27 +558,36 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the last pump cycle time from pump session data.
+        """Return the last pump cycle time.
 
-        Uses pump_cycles data which contains actual pump run timestamps.
-        Previously used event logs which could return any event type (not necessarily pump cycles).
+        Uses get_last_usage endpoint as primary source (likely updates sooner
+        than the full session history after a new cycle completes), with the
+        session history as fallback.
         """
-        cycles = self.device_data.get("pump_cycles", [])
-        if cycles and len(cycles) > 0:
-            latest = cycles[0]
+        def _parse_iso(date_str: str) -> datetime | None:
             try:
-                # Parse ISO timestamp
-                date_str = latest.get("date", "")
-                if date_str:
-                    # Handle ISO format with Z suffix
-                    if date_str.endswith('Z'):
-                        date_str = date_str.replace('Z', '+00:00')
-                    dt = datetime.fromisoformat(date_str)
-                    return dt
+                if date_str.endswith("Z"):
+                    date_str = date_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(date_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
             except (ValueError, TypeError):
-                pass
+                return None
 
-        return None
+        # Primary: last_usage endpoint (lightweight summary, may update sooner)
+        last_usage = self.device_data.get("last_usage", {})
+        last_usage_time = _parse_iso(last_usage.get("lastOutgoTime", ""))
+
+        # Fallback: session history
+        session_time = None
+        cycles = self.device_data.get("pump_cycles", [])
+        if cycles:
+            session_time = _parse_iso(cycles[0].get("date", ""))
+
+        if last_usage_time and session_time:
+            return max(last_usage_time, session_time)
+        return last_usage_time or session_time
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -607,6 +617,53 @@ class MoenFloNABLastCycleSensor(MoenFloNABSensorBase):
             return {k: v for k, v in attrs.items() if v is not None}
 
         return {}
+
+
+class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
+    """Estimated next pump cycle sensor."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:pump"
+
+    def __init__(
+        self,
+        coordinator: MoenFloNABDataUpdateCoordinator,
+        device_duid: str,
+        device_name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_duid, device_name)
+        self._attr_unique_id = f"{device_duid}_estimated_next_run"
+        self._attr_name = f"{device_name} Estimated Next Pump Run"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the estimated next pump cycle time."""
+        last_usage = self.device_data.get("last_usage", {})
+        date_str = last_usage.get("estimatedNextRun", "")
+        if not date_str:
+            return None
+        try:
+            if date_str.endswith("Z"):
+                date_str = date_str.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(date_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return time until next estimated run."""
+        last_usage = self.device_data.get("last_usage", {})
+        ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
+        if ms_until is None:
+            return {}
+        minutes = int(ms_until / 60000)
+        hours, mins = divmod(minutes, 60)
+        time_str = f"{hours}h {mins}m" if hours else f"{mins}m"
+        return {"time_until_next_run": time_str}
 
 
 class MoenFloNABBatterySensor(MoenFloNABSensorBase):

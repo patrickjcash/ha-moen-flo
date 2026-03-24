@@ -297,6 +297,16 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     device_data["pump_health"] = {}
 
+                # Get last usage summary (lightweight; may also trigger backend session processing)
+                try:
+                    last_usage = await self.client.get_last_usage(client_id)
+                    device_data["last_usage"] = last_usage
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to get last usage for device %s: %s", device_duid, err
+                    )
+                    device_data["last_usage"] = {}
+
                 # Get pump cycle history using numeric ID
                 try:
                     # On first refresh, fetch all available cycles for statistics import

@@ -374,6 +374,26 @@ class MoenFloNABClient:
         
         return response if isinstance(response, dict) else {}
 
+    async def get_last_usage(self, client_id: int) -> Dict[str, Any]:
+        """Get the most recent pump cycle summary using numeric client_id.
+
+        Returns a lightweight summary of the last session with estimated next run:
+        - lastOutgoTime: ISO timestamp of the most recent pump cycle
+        - backupUsed: Whether backup pump ran during the last cycle
+        - estimatedNextRun: ISO timestamp of estimated next pump cycle
+        - estimatedTimeUntilNextRunMS: Milliseconds until estimated next cycle
+        - lastIncomeVolume / lastOutgoVolume: Raw cumulative volume counters
+        """
+        payload = {
+            "cognitoIdentityId": self._cognito_identity_id,
+            "duid": client_id,
+            "locale": "en_US",
+        }
+        response = await self._invoke_lambda(
+            "fbgpg_usage_v1_get_last_usage_prod", payload
+        )
+        return response if isinstance(response, dict) else {}
+
     async def get_pump_cycles(
         self, client_id: int, limit: int = 10
     ) -> List[Dict[str, Any]]:
