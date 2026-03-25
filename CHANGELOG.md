@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13b4] - 2026-03-25
+
+### Fixed
+- **Last Cycle staleness (root cause found)** — the Moen app sends `crockCommand: drop_on` (`DROP_UPDATES_ON`) via shadow update every time the overview screen resumes (`OverviewFragment.onResume() → enableDropletUpdates()`). This causes the device to report pump state transitions (primaryState: active → idle) that the backend processes into completed cycle sessions. The coordinator now mirrors this exactly: `drop_on` → 3s wait → fetch session history → `updates_off`. The `updates_off` close is important to conserve battery during power outages when the device may be on backup battery.
+
 ## [2.4.13b3] - 2026-03-24
 
 ### Fixed

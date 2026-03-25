@@ -422,6 +422,36 @@ class MoenFloNABClient:
             return bool(response.get("status"))
         return bool(response)
 
+    async def enable_droplet_updates(self, client_id: int) -> None:
+        """Send crockCommand: drop_on to the device via shadow update (REST).
+
+        Mirrors OverviewFragment.enableDropletUpdates() — the app sends this on
+        every onResume(). It tells the device to start reporting droplet state
+        transitions (primaryState: active → idle) so the backend can process them
+        into completed pump cycle sessions. Always pair with disable_droplet_updates()
+        after fetching cycle history to avoid unnecessary streaming.
+        """
+        await self._invoke_lambda(
+            "smartwater-app-shadow-api-prod-update",
+            {"clientId": str(client_id), "payload": {"crockCommand": "drop_on"}},
+            parse=True,
+            escape=True,
+        )
+
+    async def disable_droplet_updates(self, client_id: int) -> None:
+        """Send crockCommand: updates_off to the device via shadow update (REST).
+
+        Mirrors the app closing/pausing the overview. Stops all streaming updates
+        from the device to conserve battery (important during power outages when
+        the device may be running on backup battery).
+        """
+        await self._invoke_lambda(
+            "smartwater-app-shadow-api-prod-update",
+            {"clientId": str(client_id), "payload": {"crockCommand": "updates_off"}},
+            parse=True,
+            escape=True,
+        )
+
     async def get_pump_cycles(
         self, client_id: int, limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -467,25 +497,6 @@ class MoenFloNABClient:
             pass
 
         return cycles
-
-    async def trigger_session_processing(self, client_id: int) -> None:
-        """Call the top-10 history endpoint as the app's overview screen does.
-
-        The Moen app calls fbgpg_usage_v1_get_my_usage_device_history_top10_prod
-        via PumpCapacityRepository when loading the overview. This appears to be
-        one of the triggers that causes the backend to process raw sensor data
-        into completed sessions. We call it before fetching full cycle history
-        so fresh sessions are available.
-        """
-        payload = {
-            "cognitoIdentityId": self._cognito_identity_id,
-            "duid": str(client_id),
-            "type": "session",
-        }
-        await self._invoke_lambda(
-            "fbgpg_usage_v1_get_my_usage_device_history_top10_prod", payload,
-            parse=True, escape=True
-        )
 
     async def get_device_logs(
         self, device_duid: str, limit: int = 100

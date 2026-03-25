@@ -308,15 +308,20 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     device_data["last_usage"] = {}
 
-                # Get pump cycle history using numeric ID
+                # Get pump cycle history using numeric ID.
+                # Mirrors the app's OverviewFragment.updateDeviceState() flow:
+                #   1. enableDropletUpdates() → drop_on (device starts streaming state transitions)
+                #   2. [brief delay for device to flush pending pump events to backend]
+                #   3. fetch session history (backend has processed the new events)
+                #   4. updates_off (stop streaming to conserve battery during power outages)
                 try:
-                    # Mirror what the app's overview screen does: call the top-10 endpoint
-                    # first. This appears to trigger backend session processing so that
-                    # the full history fetch below returns up-to-date data.
                     try:
-                        await self.client.trigger_session_processing(client_id)
-                    except Exception as trigger_err:
-                        _LOGGER.debug("trigger_session_processing failed for %s: %s", device_duid, trigger_err)
+                        await self.client.enable_droplet_updates(client_id)
+                        # Give the device time to push any buffered pump state transitions
+                        # to the backend before we fetch the session history.
+                        await asyncio.sleep(3)
+                    except Exception as err:
+                        _LOGGER.debug("enable_droplet_updates failed for %s: %s", device_duid, err)
 
                     # On first refresh, fetch all available cycles for statistics import
                     # On subsequent updates, fetch last 50 cycles for incremental updates
@@ -337,10 +342,15 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         self._last_cycle_date[device_duid] = latest_date
 
                 except Exception as err:
-                    _LOGGER.warning(
-                        "Failed to get pump cycles for device %s: %s", device_duid, err
-                    )
+                    _LOGGER.warning("Failed to get pump cycles for device %s: %s", device_duid, err)
                     device_data["pump_cycles"] = []
+                finally:
+                    # Always stop streaming after we're done — mirrors app pausing overview.
+                    # Critical for battery conservation during power outages.
+                    try:
+                        await self.client.disable_droplet_updates(client_id)
+                    except Exception as err:
+                        _LOGGER.debug("disable_droplet_updates failed for %s: %s", device_duid, err)
 
                 # Get event logs for water detection using UUID
                 # NOTE: Event logs are also used to build notification metadata
