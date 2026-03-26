@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b6] - 2026-03-26
+
+### Fixed
+- **Estimated Water Level peaks below 100% on North pump** — outlier spikes UP in water distance during pump drain (splash/vibration artifacts) were inflating `pump_off_distance` via 95/5 blending, widening the on/off range and suppressing peak fullness. Added matching clamp: `pump_off` candidates more than 30mm above the stored value are now skipped, symmetric with the `pump_on` clamp added in b5.
+
 ## [2.4.14b5] - 2026-03-26
 
 ### Fixed

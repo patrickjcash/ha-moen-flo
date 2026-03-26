@@ -655,6 +655,13 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     device_duid, int(pump_on), old_on,
                 )
                 pump_on = old_on
+            # Clamp: if pump_off candidate is >30mm above stored, it's an outlier — skip blend.
+            if pump_off > old_off + 30:
+                _LOGGER.warning(
+                    "Device %s: pump_off candidate %d mm is >30mm above stored %d mm, skipping blend",
+                    device_duid, int(pump_off), old_off,
+                )
+                pump_off = old_off
             new_on = int(0.95 * old_on + 0.05 * pump_on)
             new_off = int(0.95 * old_off + 0.05 * pump_off)
             _LOGGER.info("Device %s: Pump cycle confirmed (%s) - ON %d→%d mm, OFF %d→%d mm",
