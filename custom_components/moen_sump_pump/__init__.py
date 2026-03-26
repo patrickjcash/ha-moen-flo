@@ -298,30 +298,30 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     device_data["pump_health"] = {}
 
-                # Get last usage summary (lightweight; may also trigger backend session processing)
-                try:
-                    last_usage = await self.client.get_last_usage(client_id)
-                    device_data["last_usage"] = last_usage
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Failed to get last usage for device %s: %s", device_duid, err
-                    )
-                    device_data["last_usage"] = {}
-
-                # Get pump cycle history using numeric ID.
+                # Get pump cycle history + last usage using numeric ID.
                 # Mirrors the app's OverviewFragment.updateDeviceState() flow:
                 #   1. enableDropletUpdates() → drop_on (device starts streaming state transitions)
                 #   2. [brief delay for device to flush pending pump events to backend]
-                #   3. fetch session history (backend has processed the new events)
+                #   3. fetch session history AND last usage (both after the flush)
                 #   4. updates_off (stop streaming to conserve battery during power outages)
                 try:
                     try:
                         await self.client.enable_droplet_updates(client_id)
                         # Give the device time to push any buffered pump state transitions
-                        # to the backend before we fetch the session history.
+                        # to the backend before we fetch data.
                         await asyncio.sleep(3)
                     except Exception as err:
                         _LOGGER.debug("enable_droplet_updates failed for %s: %s", device_duid, err)
+
+                    # Fetch last usage after drop_on flush
+                    try:
+                        last_usage = await self.client.get_last_usage(client_id)
+                        device_data["last_usage"] = last_usage
+                    except Exception as err:
+                        _LOGGER.warning(
+                            "Failed to get last usage for device %s: %s", device_duid, err
+                        )
+                        device_data["last_usage"] = {}
 
                     # On first refresh, fetch all available cycles for statistics import
                     # On subsequent updates, fetch last 50 cycles for incremental updates

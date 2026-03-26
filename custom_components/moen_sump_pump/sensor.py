@@ -1,7 +1,7 @@
 """Sensor platform for Moen Flo NAB."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, timedelta, date
 import logging
 from typing import Any
 
@@ -640,8 +640,21 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the estimated next pump cycle time."""
+        """Return the estimated next pump cycle time.
+
+        Uses now + estimatedTimeUntilNextRunMS (the backend's real-time prediction
+        engine), rounded to the nearest minute to reduce recorder writes.
+        Falls back to the static estimatedNextRun field if the countdown is absent.
+        """
         last_usage = self.device_data.get("last_usage", {})
+        ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
+        if ms_until is not None:
+            now = datetime.now(timezone.utc)
+            raw = now + timedelta(milliseconds=ms_until)
+            # Round to nearest minute
+            if raw.second >= 30:
+                return raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
+            return raw.replace(second=0, microsecond=0)
         return _parse_iso(last_usage.get("estimatedNextRun", ""))
 
 class MoenFloNABBatterySensor(MoenFloNABSensorBase):

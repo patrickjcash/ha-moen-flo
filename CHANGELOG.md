@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b1] - 2026-03-26
+
+### Fixed
+- **Estimated Next Pump Cycle showing stale/wrong time** — the sensor was using `estimatedNextRun`, a static backend timestamp that only updates when sessions are batch-processed. Confirmed via test that `estimatedNextRun` can be 1-3+ hours stale while the Moen app shows an accurate prediction. The app uses `estimatedTimeUntilNextRunMS`, a separate real-time prediction engine field. The sensor now computes `now + estimatedTimeUntilNextRunMS`, rounded to the nearest minute to limit recorder writes. Test confirmed this matches the Moen app's display for both pumps.
+
 ## [2.4.13] - 2026-03-26
 
 ### Added
