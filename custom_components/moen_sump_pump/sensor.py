@@ -649,6 +649,10 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
         last_usage = self.device_data.get("last_usage", {})
         ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
         if ms_until is not None:
+            if ms_until <= 0:
+                # Negative countdown = backend has no current estimate (post-cycle reset).
+                # App shows "Pump may run depending on weather" in this state.
+                return None
             now = datetime.now(timezone.utc)
             raw = now + timedelta(milliseconds=ms_until)
             # Round to nearest minute
