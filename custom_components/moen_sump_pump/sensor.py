@@ -650,17 +650,11 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
         estimated_next_run = last_usage.get("estimatedNextRun")
         ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
 
-        # Mirror app logic: estimatedNextRun null or "-1" means no estimate available
         if not estimated_next_run or estimated_next_run == "-1":
             return None
 
         if ms_until is None:
             return _parse_iso(estimated_next_run)
-
-        # App thresholds (in seconds): < -3600 or >= 43200 → "Pump may run depending on weather"
-        s_until = ms_until / 1000
-        if s_until < -3600 or s_until >= 43200:
-            return None
 
         now = datetime.now(timezone.utc)
         raw = now + timedelta(milliseconds=ms_until)
