@@ -728,43 +728,48 @@ Alert states follow the pattern: `{activity}_{ack}_{rack}_{suppressed}`
 
 ### Alert ID Reference
 
-Alert IDs from two sources:
+Alert IDs from three sources:
 1. **`fbgpg_user_v1_alert_settings_by_device_get_prod`** — Comprehensive list of IDs configured on device
 2. **`fbgpg_logs_v1_get_device_logs_user_prod`** — Titles and severities from event history
+3. **Decompiled Android APK** — Enum names, dismiss behavior, and shadow commands
 
-| ID | Title | Severity | Source |
-|----|-------|----------|--------|
-| 213 | (unknown) | — | Alert settings |
-| 218 | Backup Test Scheduled | info | Event logs |
-| 222 | (unknown) | — | Alert settings |
-| 224 | High Water Level | warning | Event logs + alert settings |
-| 225 | Normal Water Level | info | Event logs |
-| 230 | (unknown) | — | Alert settings |
-| 232 | (unknown) | — | Alert settings |
-| 236 | Sensor Too Close | critical | Event logs |
-| 250 | (unknown) | — | Alert settings |
-| 254 | Critical Flood Risk | critical | Event logs + alert settings |
-| 256 | High Flood Risk | critical | Event logs + alert settings |
-| 258 | Flood Risk | warning | Event logs + alert settings |
-| 259 | Flood Risk Cleared | info | Event logs |
-| 260 | Main Pump Failed | critical | Event logs + alert settings |
-| 261 | Main Pump Reset | info | Event logs |
-| 262 | Main Pump Overwhelmed | critical | Event logs + alert settings |
-| 263 | Main Pump Recovered | info | Event logs |
-| 266 | Main Pump Not Stopping | warning | Event logs + alert settings |
-| 267 | Main Pump Stops Normally | info | Event logs |
-| 268 | (unknown) | — | Alert settings |
-| 269 | Backup Pump Reset | info | Event logs |
-| 270 | (unknown) | — | Alert settings |
-| 301 | (unknown) | — | Alert settings (North pump args) |
-| 1716 | (unknown) | — | Alert settings |
-| 1718 | (unknown) | — | Alert settings |
-| 1720 | (unknown) | — | Alert settings |
-| 1722 | (unknown) | — | Alert settings |
-| 2802 | (unknown) | — | Alert settings |
-| 2803 | (unknown) | — | Alert settings |
+**Dismiss behavior:**
+- `dismiss: true` — Can be acknowledged via `fbgpg_alerts_v1_acknowledge_alert_prod`
+- `dismiss: false` — Cannot be dismissed via normal flow; resolves when condition clears or via shadow command
 
-**Additional notification types seen in the Moen app** (not yet observed in event logs):
+| ID | Title | Severity | dismiss | Notes | Source |
+|----|-------|----------|---------|-------|--------|
+| 213 | (unknown) | — | — | | Alert settings |
+| 218 | Backup Test Scheduled | info | false | Pathway notification; not shown in app when actionable alerts present; excluded from HA active count | Event logs |
+| 222 | (unknown) | — | — | | Alert settings |
+| 224 | High Water Level | warning | true | | Event logs + alert settings |
+| 225 | Normal Water Level | info | — | | Event logs |
+| 230 | (unknown) | — | — | | Alert settings |
+| 232 | (unknown) | — | — | | Alert settings |
+| 236 | Sensor Too Close | critical | — | | Event logs |
+| 250 | (unknown) | — | — | | Alert settings |
+| 254 | Critical Flood Risk | critical | — | | Event logs + alert settings |
+| 256 | High Flood Risk | critical | — | | Event logs + alert settings |
+| 258 | Flood Risk | warning | — | | Event logs + alert settings |
+| 259 | Flood Risk Cleared | info | — | | Event logs |
+| 260 | Main Pump Failed | critical | — | | Event logs + alert settings |
+| 261 | Main Pump Reset | info | — | | Event logs |
+| 262 | Main Pump Overwhelmed | critical | — | | Event logs + alert settings |
+| 263 | Main Pump Recovered | info | — | | Event logs |
+| 266 | Main Pump Not Stopping | warning | false | Pathway 2 alert; cleared by shadow command `crockCommand: rst_primary` (from `RESET_PRIMARY_STATE` enum in APK). Cannot be dismissed via normal acknowledge flow. | Event logs + alert settings + APK |
+| 267 | Main Pump Stops Normally | info | — | | Event logs |
+| 268 | Backup Pump Not Stopping *(inferred)* | warning *(inferred)* | false *(inferred)* | Likely backup pump equivalent of 266; probably cleared by `crockCommand: rst_backup` (`RESET_BACKUP_STATE` in APK) | Alert settings + APK |
+| 269 | Backup Pump Reset | info | — | | Event logs |
+| 270 | Backup Pump Stops Normally *(inferred)* | info *(inferred)* | — | Likely backup pump equivalent of 267 | Alert settings |
+| 301 | (unknown) | — | — | Seen in alert settings args on North pump | Alert settings |
+| 1716 | (unknown) | — | — | | Alert settings |
+| 1718 | (unknown) | — | — | | Alert settings |
+| 1720 | (unknown) | — | — | | Alert settings |
+| 1722 | (unknown) | — | — | | Alert settings |
+| 2802 | (unknown) | — | — | | Alert settings |
+| 2803 | (unknown) | — | — | | Alert settings |
+
+**Notification types seen in the Moen app UI, not yet mapped to IDs:**
 - Dead Battery (critical)
 - Backup Test Failed (critical)
 - Overflow Water Level (critical)

@@ -398,15 +398,17 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     # Convert list to dictionary format for sensor compatibility
                     # Shadow format: {"262": {...}, "218": {...}}
                     # ACTIVE format: [{...}, {...}] with severity included
+                    notification_metadata = device_data.get("notification_metadata", {})
                     alerts_dict = {}
                     for alert in device_alerts:
                         alert_id = alert.get("id")
                         if alert_id:
-                            # Store alert with additional fields from v2 API
+                            # Severity comes from v2 API; fall back to notification_metadata
+                            severity = alert.get("severity") or notification_metadata.get(str(alert_id), {}).get("severity")
                             alerts_dict[alert_id] = {
                                 "state": alert.get("state"),
                                 "timestamp": alert.get("time"),
-                                "severity": alert.get("severity"),  # Now directly available
+                                "severity": severity,
                                 "dismiss": alert.get("dismiss"),
                                 "title": alert.get("title"),
                             }

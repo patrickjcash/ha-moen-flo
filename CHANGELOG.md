@@ -5,6 +5,15 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13b5] - 2026-03-26
+
+### Fixed
+- **"Backup Test Scheduled" inflating active alert count** — info-severity alerts (e.g. alert 218) are now excluded from the Active Alerts sensor count, matching the Moen app's behavior of not surfacing informational/scheduled alerts alongside actionable ones.
+- **Alert severity showing as "unknown" in HA** — severity is now populated from `notification_metadata` as a fallback when the v2 alerts API doesn't return it directly.
+
+### Changed
+- **API_DOCUMENTATION.md** — Alert ID Reference table expanded with dismiss behavior, shadow command notes, and inferred titles for 268/270 (backup pump Pathway 2 equivalents of 266/267).
+
 ## [2.4.13b4] - 2026-03-25
 
 ### Fixed

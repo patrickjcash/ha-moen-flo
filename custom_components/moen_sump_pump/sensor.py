@@ -772,13 +772,18 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
         if not alerts:
             return 0
 
-        # Count unacknowledged alerts (matches mobile app behavior)
+        notification_metadata = self.device_data.get("notification_metadata", {})
+
+        # Count unacknowledged, non-info alerts (matches mobile app behavior)
         active_count = 0
         for alert_id, alert_data in alerts.items():
             state = alert_data.get("state", "")
-            # Check if alert is unacknowledged (unlack) regardless of active/inactive
-            if "unlack" in state:
-                active_count += 1
+            if "unlack" not in state:
+                continue
+            severity = alert_data.get("severity") or notification_metadata.get(str(alert_id), {}).get("severity", "")
+            if severity == "info":
+                continue
+            active_count += 1
 
         return active_count
 
