@@ -66,6 +66,7 @@ home-assistant_v2.db
 
 # Claude
 .claude/
+CLAUDE.md
 
 # APK teardown (reverse engineering artifacts, not for distribution)
 moen_apk_teardown/
