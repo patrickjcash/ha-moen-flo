@@ -758,9 +758,9 @@ Alert IDs from three sources:
 | 263 | Main Pump Recovered | info | — | | Event logs |
 | 266 | Main Pump Not Stopping | warning | false | Pathway 2 alert; cleared by shadow command `crockCommand: rst_primary` (from `RESET_PRIMARY_STATE` enum in APK). Cannot be dismissed via normal acknowledge flow. | Event logs + alert settings + APK |
 | 267 | Main Pump Stops Normally | info | — | | Event logs |
-| 268 | Backup Pump Not Stopping *(inferred)* | warning *(inferred)* | false *(inferred)* | Likely backup pump equivalent of 266; probably cleared by `crockCommand: rst_backup` (`RESET_BACKUP_STATE` in APK) | Alert settings + APK |
+| 268 | Backup Pump Failed | critical | true | "The backup pump does not seem to run normally." Confirmed via v2 API live data. | Active alerts API |
 | 269 | Backup Pump Reset | info | — | | Event logs |
-| 270 | Backup Pump Stops Normally *(inferred)* | info *(inferred)* | — | Likely backup pump equivalent of 267 | Alert settings |
+| 270 | (unknown) | — | — | Previously inferred as "Backup Pump Stops Normally" but 268 is confirmed as "Backup Pump Failed" (not a state-change pair with 266/267); inference withdrawn | Alert settings |
 | 301 | (unknown) | — | — | Seen in alert settings args on North pump | Alert settings |
 | 1716 | (unknown) | — | — | | Alert settings |
 | 1718 | (unknown) | — | — | | Alert settings |

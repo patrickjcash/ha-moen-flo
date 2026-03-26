@@ -5,6 +5,13 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13b6] - 2026-03-26
+
+### Fixed
+- **Alert severity always "unknown" in HA attributes** — `extra_state_attributes` was ignoring the severity field returned directly by the v2 alerts API and only checking `notification_metadata` (mined from event logs). It now prefers the API value, with metadata as fallback.
+- **Alert description always falling back to ALERT_CODES** — same root cause; now prefers the `title` field from the v2 API response.
+- **API docs**: Alert 268 corrected to "Backup Pump Failed" (confirmed via live API data); previous inference of "Backup Pump Not Stopping" withdrawn.
+
 ## [2.4.13b5] - 2026-03-26
 
 ### Fixed

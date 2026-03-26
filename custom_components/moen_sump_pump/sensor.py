@@ -806,13 +806,10 @@ class MoenFloNABLastAlertSensor(MoenFloNABSensorBase):
             state = alert_data.get("state", "")
             timestamp_str = alert_data.get("timestamp", "")
 
-            # Use dynamic metadata if available, fallback to hardcoded
-            if alert_id in notification_metadata:
-                description = notification_metadata[alert_id].get("title", f"Alert {alert_id}")
-                severity = notification_metadata[alert_id].get("severity", "unknown")
-            else:
-                description = ALERT_CODES.get(alert_id, f"Alert {alert_id}")
-                severity = "unknown"
+            # Prefer v2 API fields, fall back to notification_metadata, then ALERT_CODES
+            meta = notification_metadata.get(alert_id, {})
+            description = alert_data.get("title") or meta.get("title") or ALERT_CODES.get(alert_id, f"Alert {alert_id}")
+            severity = alert_data.get("severity") or meta.get("severity") or "unknown"
 
             alert_info = {
                 "id": alert_id,
