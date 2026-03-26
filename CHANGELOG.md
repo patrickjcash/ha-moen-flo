@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b5] - 2026-03-26
+
+### Fixed
+- **Estimated Water Level drifts below 100% peak over time** — ToF sensor produces spuriously low distance readings ("splash artifacts") right as the pump kicks on, which were being captured as the `pump_on` candidate and slowly dragging the stored threshold lower via 95/5 blending. Fixed with two layers: (1) `pump_on` candidate now uses the max of the two readings before the jump instead of just the single pre-jump reading, filtering single-poll spikes; (2) a hard clamp in `_confirm_pump_cycle` skips blending any `pump_on` candidate more than 30mm below the stored value, catching multi-poll bad reads.
+
 ## [2.4.14b4] - 2026-03-26
 
 ### Changed

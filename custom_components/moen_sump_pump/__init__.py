@@ -606,14 +606,21 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                     self._confirm_pump_cycle(device_duid, pending, thresholds, reason="stable readings")
                     del self._pending_cycles[device_duid]
         elif delta >= 20:
-            # Phase 1: large jump detected, enter pending state
+            # Phase 1: large jump detected, enter pending state.
+            # Use max of the two readings before the jump to filter single-poll ToF
+            # splash artifacts (bad reads right as pump kicks on drag pump_on too low).
+            # history[-1] = current (just appended), [-2] = previous, [-3] = one before.
+            if len(history) >= 3:
+                pump_on_candidate = max(history[-2]["distance"], history[-3]["distance"])
+            else:
+                pump_on_candidate = previous_distance
             self._pending_cycles[device_duid] = {
-                "pump_on": previous_distance,
+                "pump_on": pump_on_candidate,
                 "pump_off": current_distance,
                 "stable_count": 0,
             }
             _LOGGER.debug("Device %s: Pump cycle started (jump: %d mm), pump_on candidate: %d mm",
-                          device_duid, int(delta), int(previous_distance))
+                          device_duid, int(delta), int(pump_on_candidate))
 
     def _confirm_pump_cycle(self, device_duid: str, pending: dict, thresholds: dict, reason: str) -> None:
         """Confirm a detected pump cycle and blend values into stored thresholds.
@@ -641,6 +648,13 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Device %s: First pump cycle confirmed (%s) - ON: %d mm, OFF: %d mm",
                          device_duid, reason, new_on, new_off)
         else:
+            # Clamp: if pump_on candidate is >30mm below stored, it's an outlier — skip blend.
+            if pump_on < old_on - 30:
+                _LOGGER.warning(
+                    "Device %s: pump_on candidate %d mm is >30mm below stored %d mm, skipping blend",
+                    device_duid, int(pump_on), old_on,
+                )
+                pump_on = old_on
             new_on = int(0.95 * old_on + 0.05 * pump_on)
             new_off = int(0.95 * old_off + 0.05 * pump_off)
             _LOGGER.info("Device %s: Pump cycle confirmed (%s) - ON %d→%d mm, OFF %d→%d mm",
