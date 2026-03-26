@@ -17,6 +17,7 @@ This document consolidates all reverse-engineered findings for the Moen Flo NAB 
    - [Shadow Update (REST)](#4-shadow-update-rest)
    - [Environment (Temp/Humidity)](#5-environment-temphumidity)
    - [Usage History Top-10](#6-usage-history-top-10)
+   - [Last Usage and Estimated Next Run](#6a-last-usage-and-estimated-next-run)
    - [Pump Cycle Session History](#7-pump-cycle-session-history)
    - [Event Logs](#8-event-logs)
    - [Alert Settings by Device](#9-alert-settings-by-device)
@@ -339,6 +340,77 @@ client_id = device["clientId"]   # Integer (pass as string to some endpoints)
   ]
 }
 ```
+
+---
+
+### 6a. Last Usage and Estimated Next Run
+
+**Function:** `fbgpg_usage_v1_get_last_usage_prod`
+
+**Purpose:** Returns the most recent cycle's metadata and the backend's real-time prediction for when the next pump cycle will occur.
+
+**ID Type:** Numeric `clientId` (passed as `duid`, as a string)
+
+**Payload:**
+```json
+{
+  "cognitoIdentityId": "",
+  "duid": "123456789",
+  "locale": "en_US"
+}
+```
+
+**Response:**
+```json
+{
+  "duid": "123456789",
+  "lastOutgoTime": "2026-03-26T20:08:31.847Z",
+  "lastOutgoTimeMS": 6041000,
+  "lastOutgoVolume": 81078432,
+  "lastIncomeTimeMS": 6041000,
+  "lastIncomeVolume": 181162,
+  "backupUsed": false,
+  "estimatedNextRun": "2026-03-26T23:37:30.847Z",
+  "estimatedNextRunMS": 6498000,
+  "estimatedTimeUntilNextRunMS": 6446490
+}
+```
+
+**Field notes:**
+
+| Field | Description |
+|-------|-------------|
+| `lastOutgoTime` | ISO timestamp of when the last pump-out cycle was processed by the backend |
+| `lastOutgoTimeMS` | Duration of the last pump-out cycle in milliseconds |
+| `lastIncomeTimeMS` | Duration of last inflow (fill) period in milliseconds |
+| `estimatedNextRun` | **Static** ISO timestamp — updated only when the backend batch-processes a completed session. Can be 1–3+ hours stale. |
+| `estimatedNextRunMS` | Estimated time until next run in ms, anchored to `lastOutgoTime` (stable, not real-time) |
+| `estimatedTimeUntilNextRunMS` | **Real-time countdown** from a separate prediction engine. Always fresh — counts down each poll, goes negative when overdue. This is what the Moen app uses for display. |
+
+---
+
+#### Estimated Next Run — How the Moen App Displays It
+
+The app's `calculateNextRunEstimate()` method (from APK decompile) uses `estimatedTimeUntilNextRunMS` as a real-time countdown with the following display logic:
+
+```
+estimatedNextRun == null or "-1"  →  "Not Available"
+seconds < -3600                   →  "Pump may run depending on weather"
+-3600 ≤ seconds < -60             →  "Within an hour"
+-60 ≤ seconds < 0                 →  "Soon"
+0 ≤ seconds < 60                  →  "In X seconds"
+60 ≤ seconds < 3600               →  "In X minutes"
+3600 ≤ seconds < 43200            →  "In X hours"  (integer floor)
+seconds ≥ 43200                   →  "Pump may run depending on weather"
+```
+
+**Key insight:** The app does not compute a specific future timestamp for the "Within an hour" or "Soon" zones — it displays text labels. `estimatedTimeUntilNextRunMS` goes negative when the pump is overdue; the app treats values between -3600s and 0 as "still expected soon."
+
+**HA integration approach:** The integration uses `now + estimatedTimeUntilNextRunMS` directly as a TIMESTAMP sensor. When positive, this shows a future time ("in X minutes/hours"). When slightly negative, HA shows "X minutes ago", which conveys the pump is overdue. The sensor returns unavailable only when `estimatedNextRun` is null or `"-1"` (backend has no estimate at all).
+
+**Why `estimatedNextRun` is not used:** It is a static batch-computed timestamp that does not update until the backend finishes processing the next session. It can be several hours stale. Confirmed via `tests/test_estimated_next_cycle.py`.
+
+**Why `drop_on` does not help:** Sending `crockCommand: drop_on` before calling this endpoint does not cause `estimatedNextRun` or `lastOutgoTime` to refresh within 60 seconds. The backend updates these fields only after a full pump cycle is detected and processed. Confirmed via `tests/test_drop_on_timing.py` (archived).
 
 ---
 

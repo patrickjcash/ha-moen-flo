@@ -234,7 +234,7 @@ class MoenFloNABBasinFullnessSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_basin_fullness"
-        self._attr_name = f"{device_name} Basin Fullness"
+        self._attr_name = f"{device_name} Estimated Water Level"
 
     @property
     def native_value(self) -> float | None:
@@ -306,7 +306,7 @@ class MoenFloNABPumpOnDistanceSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_pump_on_distance"
-        self._attr_name = f"{device_name} Pump ON Distance (Calculated)"
+        self._attr_name = f"{device_name} Estimated Pump On Distance"
 
     @property
     def native_value(self) -> int | None:
@@ -357,7 +357,7 @@ class MoenFloNABPumpOffDistanceSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_pump_off_distance"
-        self._attr_name = f"{device_name} Pump OFF Distance (Calculated)"
+        self._attr_name = f"{device_name} Estimated Pump Off Distance"
 
     @property
     def native_value(self) -> int | None:

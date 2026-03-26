@@ -5,6 +5,13 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b4] - 2026-03-26
+
+### Changed
+- **Sensor renames**: "Pump ON Distance (Calculated)" → "Estimated Pump On Distance", "Pump OFF Distance (Calculated)" → "Estimated Pump Off Distance", "Basin Fullness" → "Estimated Water Level"
+- **API docs**: Added full documentation for `fbgpg_usage_v1_get_last_usage_prod` including field descriptions, Moen app display logic (from APK decompile), and HA integration rationale for `estimatedTimeUntilNextRunMS`
+- **Test scripts**: Archived completed investigation scripts (`test_drop_on_timing`, `test_drop_on_trigger`, `test_last_cycle_freshness`, `test_last_usage_staleness`)
+
 ## [2.4.14b3] - 2026-03-26
 
 ### Fixed
