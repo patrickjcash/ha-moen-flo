@@ -647,19 +647,27 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
         Falls back to the static estimatedNextRun field if the countdown is absent.
         """
         last_usage = self.device_data.get("last_usage", {})
+        estimated_next_run = last_usage.get("estimatedNextRun")
         ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
-        if ms_until is not None:
-            if ms_until <= 0:
-                # Negative countdown = backend has no current estimate (post-cycle reset).
-                # App shows "Pump may run depending on weather" in this state.
-                return None
-            now = datetime.now(timezone.utc)
-            raw = now + timedelta(milliseconds=ms_until)
-            # Round to nearest minute
-            if raw.second >= 30:
-                return raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
-            return raw.replace(second=0, microsecond=0)
-        return _parse_iso(last_usage.get("estimatedNextRun", ""))
+
+        # Mirror app logic: estimatedNextRun null or "-1" means no estimate available
+        if not estimated_next_run or estimated_next_run == "-1":
+            return None
+
+        if ms_until is None:
+            return _parse_iso(estimated_next_run)
+
+        # App thresholds (in seconds): < -3600 or >= 43200 → "Pump may run depending on weather"
+        s_until = ms_until / 1000
+        if s_until < -3600 or s_until >= 43200:
+            return None
+
+        now = datetime.now(timezone.utc)
+        raw = now + timedelta(milliseconds=ms_until)
+        # Round to nearest minute to reduce recorder writes
+        if raw.second >= 30:
+            return raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        return raw.replace(second=0, microsecond=0)
 
 class MoenFloNABBatterySensor(MoenFloNABSensorBase):
     """Battery level diagnostic sensor."""

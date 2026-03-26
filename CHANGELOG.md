@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b3] - 2026-03-26
+
+### Fixed
+- **Estimated Next Pump Cycle showing "unknown" when app says "Within an hour"** — the sensor was returning unavailable for any negative `estimatedTimeUntilNextRunMS`. The app uses a threshold: only values below -3600s (1 hour negative) map to "Pump may run depending on weather" (→ unavailable). Values between -3600s and 0 map to "Within an hour" and now show the computed past timestamp in HA (matching the approximate run time). Values ≥ 43200s (12h) are also mapped to unavailable, matching the app's upper bound.
+
 ## [2.4.14b2] - 2026-03-26
 
 ### Fixed

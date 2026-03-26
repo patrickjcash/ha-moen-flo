@@ -62,6 +62,63 @@ def fmt_local(dt):
     return et.strftime("%I:%M %p ET")
 
 
+def app_display_text(ms_until):
+    """Mirror the app's calculateNextRunEstimate threshold logic."""
+    if ms_until is None:
+        return "N/A (no field)"
+    s = ms_until / 1000
+    if s < -3600:
+        return "Pump may run depending on weather"
+    elif s < -60:
+        return "Within an hour"
+    elif s < 0:
+        return "Soon"
+    elif s < 60:
+        return f"In {int(s)} seconds"
+    elif s < 3600:
+        return f"In {int(s/60)} minutes"
+    elif s < 43200:
+        return f"In {round(s/3600, 1)} hours"
+    else:
+        return "Pump may run depending on weather"
+
+
+def ha_sensor_value(now_utc, ms_until, estimated_next_run):
+    """Proposed HA sensor native_value with correct thresholds."""
+    # App checks estimatedNextRun first
+    if estimated_next_run is None or estimated_next_run == "-1":
+        return None, "None (no estimatedNextRun)"
+    if ms_until is None:
+        dt = datetime.fromisoformat(estimated_next_run.replace("Z", "+00:00"))
+        return dt, f"fallback to estimatedNextRun: {fmt_local(dt)}"
+    s = ms_until / 1000
+    if s < -3600 or s >= 43200:
+        return None, "None (out of range)"
+    raw = now_utc + timedelta(milliseconds=ms_until)
+    if raw.second >= 30:
+        rounded = raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    else:
+        rounded = raw.replace(second=0, microsecond=0)
+    return rounded, fmt_local(rounded)
+
+
+def ha_sensor_value_current(now_utc, ms_until, estimated_next_run):
+    """Current (b2) HA sensor logic for comparison."""
+    if ms_until is not None:
+        if ms_until <= 0:
+            return None, "None (ms_until <= 0 — BUG)"
+        raw = now_utc + timedelta(milliseconds=ms_until)
+        if raw.second >= 30:
+            rounded = raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        else:
+            rounded = raw.replace(second=0, microsecond=0)
+        return rounded, fmt_local(rounded)
+    if estimated_next_run:
+        dt = datetime.fromisoformat(estimated_next_run.replace("Z", "+00:00"))
+        return dt, fmt_local(dt)
+    return None, "None"
+
+
 def main():
     username = os.environ["MOEN_USERNAME"]
     password = os.environ["MOEN_PASSWORD"]
@@ -91,29 +148,19 @@ def main():
         ms_until = lu.get("estimatedTimeUntilNextRunMS")
         last_outgo = lu.get("lastOutgoTime")
 
-        # Current sensor value (raw estimatedNextRun)
-        raw_dt = datetime.fromisoformat(raw_next.replace("Z", "+00:00")) if raw_next else None
+        s_until = ms_until / 1000 if ms_until is not None else None
+        zone = app_display_text(ms_until)
+        _, cur = ha_sensor_value_current(now_utc, ms_until, raw_next)
+        _, prop = ha_sensor_value(now_utc, ms_until, raw_next)
 
-        # Proposed value: now + estimatedTimeUntilNextRunMS, rounded to nearest minute
-        computed_dt = None
-        if ms_until is not None:
-            computed_raw = now_utc + timedelta(milliseconds=ms_until)
-            # Round to nearest minute
-            seconds = computed_raw.second + computed_raw.microsecond / 1e6
-            if seconds >= 30:
-                computed_dt = computed_raw.replace(second=0, microsecond=0) + timedelta(minutes=1)
-            else:
-                computed_dt = computed_raw.replace(second=0, microsecond=0)
-
-        print(f"  lastOutgoTime (last processed cycle):  {fmt_local(datetime.fromisoformat(last_outgo.replace('Z', '+00:00'))) if last_outgo else 'N/A'}")
+        print(f"  lastOutgoTime:              {fmt_local(datetime.fromisoformat(last_outgo.replace('Z', '+00:00'))) if last_outgo else 'N/A'}")
+        print(f"  estimatedTimeUntilNextRunMS: {ms_until} ({round(s_until/60, 1) if s_until is not None else '?'} min)")
         print()
-        print(f"  [CURRENT]  estimatedNextRun:            {fmt_local(raw_dt)}")
-        print(f"             (stale if lastOutgo is old)")
+        print(f"  App display text:  {zone}")
+        print(f"  [CURRENT b2] HA:   {cur}")
+        print(f"  [PROPOSED]   HA:   {prop}")
         print()
-        print(f"  [PROPOSED] now + estimatedTimeUntilMS: {fmt_local(computed_dt)}")
-        print(f"             (in {round(ms_until/60000, 1)} min)" if ms_until else "")
-        print()
-        print(f"  >>> Compare these with what the Moen app shows for '{name}'")
+        print(f"  >>> Compare App display with what the Moen app shows for '{name}'")
         print()
 
 
