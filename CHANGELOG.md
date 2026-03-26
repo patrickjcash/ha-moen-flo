@@ -5,6 +5,22 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.13] - 2026-03-26
+
+### Added
+- **Reset Primary Pump Status button** — clears Pathway 2 alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via the normal Dismiss Alerts flow. Equivalent to View Device → Primary Pump → Reset Primary Pump Status in the Moen app.
+- **Reset Backup Pump Status button** — same for the backup pump. Only shown if a backup pump is configured (`pumpInfo.hasBackupPump`).
+- **Estimated Next Pump Cycle sensor** — TIMESTAMP sensor powered by `fbgpg_usage_v1_get_last_usage_prod`, showing when the Moen backend estimates the next cycle will occur.
+
+### Fixed
+- **Last Cycle staleness** — coordinator now mirrors the `crockCommand: drop_on` (`DROP_UPDATES_ON`) that the Moen app sends on every overview screen resume (`OverviewFragment.onResume()`), causing the device to report pump state transitions that the backend processes into completed sessions. Closes with `updates_off` to conserve battery during power outages.
+- **Alert severity always "unknown"** — `extra_state_attributes` now reads severity and title directly from the v2 alerts API response instead of only checking event-log metadata.
+- **Info-severity alerts inflating Active Alerts count** — alerts like "Backup Test Scheduled" (severity: info) are now excluded from the count, matching the Moen app's behavior.
+
+### Changed
+- **Estimated Next Pump Cycle** — removed `time_until_next_run` attribute; HA's TIMESTAMP device class already renders "in X minutes" natively, and the attribute was causing a recorder write every polling interval.
+- Alert ID Reference in API docs updated with confirmed titles, dismiss behavior, and shadow command notes (268 = "Backup Pump Failed", 218 `dismiss: false`, 266 cleared by `rst_primary`).
+
 ## [2.4.13b6] - 2026-03-26
 
 ### Fixed
@@ -48,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.4.13b0] - 2026-03-24
 
 ### Added
-- **Estimated Next Pump Run sensor** — new TIMESTAMP sensor powered by the `fbgpg_usage_v1_get_last_usage_prod` endpoint, showing when the Moen backend estimates the next pump cycle will occur. Includes a `time_until_next_run` attribute (e.g., `"1h 22m"`).
+- **Estimated Next Pump Cycle sensor** — new TIMESTAMP sensor powered by the `fbgpg_usage_v1_get_last_usage_prod` endpoint, showing when the Moen backend estimates the next pump cycle will occur.
 
 ### Fixed
 - **Last Cycle sensor staleness** — the integration now calls `fbgpg_usage_v1_get_last_usage_prod` (previously unused) before fetching session history on each poll. This endpoint is likely what the Moen app calls when opening the history view, which may trigger backend session processing and resolve the issue where the Last Cycle sensor would not update until the user manually opened the Moen app. The Last Cycle timestamp now also takes the `lastOutgoTime` from this endpoint when it is more recent than the session history.

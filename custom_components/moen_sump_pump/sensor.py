@@ -636,26 +636,13 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_estimated_next_run"
-        self._attr_name = f"{device_name} Estimated Next Pump Run"
+        self._attr_name = f"{device_name} Estimated Next Pump Cycle"
 
     @property
     def native_value(self) -> datetime | None:
         """Return the estimated next pump cycle time."""
         last_usage = self.device_data.get("last_usage", {})
         return _parse_iso(last_usage.get("estimatedNextRun", ""))
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return time until next estimated run."""
-        last_usage = self.device_data.get("last_usage", {})
-        ms_until = last_usage.get("estimatedTimeUntilNextRunMS")
-        if ms_until is None:
-            return {}
-        minutes = int(ms_until / 60000)
-        hours, mins = divmod(minutes, 60)
-        time_str = f"{hours}h {mins}m" if hours else f"{mins}m"
-        return {"time_until_next_run": time_str}
-
 
 class MoenFloNABBatterySensor(MoenFloNABSensorBase):
     """Battery level diagnostic sensor."""

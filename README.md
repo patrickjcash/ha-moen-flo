@@ -13,36 +13,28 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v2.4.0
+## What's New in v2.4.13
 
-🎯 **Intelligent Basin Fullness** - Persistent event-based threshold learning!
+🔔 **Pump Status Reset Buttons** — Clear Pathway 2 alerts directly from HA!
 
-- Automatically detects pump ON/OFF events from water distance changes
-- Learns thresholds over time with weighted averaging (adapts to seasonal changes)
-- Works across days/weeks between pump cycles (not limited to recent readings)
-- Two new diagnostic sensors show calculated pump ON/OFF distances
+- **Reset Primary Pump Status** button clears "Main Pump Not Stopping" and similar alerts that cannot be dismissed via the normal Dismiss Alerts flow
+- **Reset Backup Pump Status** button (only shown if backup pump is configured)
+- Equivalent to View Device → Primary/Backup Pump → Reset Status in the Moen app
 
-🛡️ **Improved Reliability** - Better error handling prevents update gaps!
+⏱️ **Estimated Next Pump Cycle** sensor — powered by the Moen backend's own prediction engine
 
-- Authentication failures during MQTT reconnection no longer stop all updates
-- Graceful fallback to REST API when MQTT issues occur
-- Prevents multi-hour coordinator lockups from network hiccups
+- Shows the timestamp when the backend estimates the next cycle will occur
+- Updates automatically as pump patterns change
 
-📊 **Enhanced Alert Organization** - Better filtering and automation!
+🔧 **Last Cycle staleness fixed** — cycles now appear within one poll interval without opening the app
 
-- **Active Alerts** sensor shows count of all unacknowledged alerts (matches mobile app)
-- **Critical Alerts** binary sensor triggers on unacknowledged critical-severity alerts
-- **Warning Alerts** binary sensor triggers on unacknowledged warning-severity alerts
-- **Flood Risk** sensor simplified to match device's flood risk assessment only
-- Alert sensors now correctly count alerts that are resolved but not yet dismissed
-- All alert details available as sensor attributes for custom dashboards
+- Coordinator mirrors the `drop_on` command the Moen app sends on every overview screen load
+- Closes cleanly with `updates_off` to conserve battery during power outages
 
-Plus all the features from v2.3.x:
-- Multiple device & location support
-- Dynamic notification descriptions from API
-- MQTT connection stability with automatic credential refresh
-- Pump cycles data with statistics integration
-- Comprehensive monitoring and diagnostics
+📊 **Alert quality improvements**
+
+- Info-severity alerts (e.g. "Backup Test Scheduled") excluded from Active Alerts count
+- Alert severity and title now sourced directly from the v2 alerts API (no longer "unknown")
 
 See the [CHANGELOG](CHANGELOG.md) for complete details.
 
@@ -63,6 +55,8 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 - **Humidity** - Relative humidity in the sump pit (%)
 - **Daily Pump Capacity** - Percentage of daily pump capacity used
 - **Last Pump Cycle** - Timestamp of the last pump cycle with detailed water in/out data
+- **Estimated Next Pump Cycle** - Timestamp of the Moen backend's estimated next cycle
+- **Active Alerts** - Count of unacknowledged non-info alerts (matches mobile app behavior)
 
 ### Long-Term Statistics
 - **Pump Volume Statistics** - Automatically imported for Energy Dashboard integration
@@ -79,6 +73,11 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 - **Critical Alerts** - Triggers when critical-severity unacknowledged alerts are present
 - **Warning Alerts** - Triggers when warning-severity unacknowledged alerts are present
 - **Water Detection** - Detects water via the remote sensing cable (moisture sensor)
+
+### Buttons
+- **Reset Primary Pump Status** - Clears Pathway 2 pump alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via the normal Dismiss Alerts flow
+- **Reset Backup Pump Status** - Same for backup pump (only shown if backup pump is configured)
+- **Dismiss Alerts** - Acknowledges all dismissible active alerts
 
 ### Diagnostic Sensors
 These sensors are hidden by default and provide technical device information:

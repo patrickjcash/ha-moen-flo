@@ -179,8 +179,8 @@ The app filters alerts where `getDismiss()` returns `false` to show in Activity 
 ## Device ID Discovery
 
 NAB devices have TWO identifiers:
-1. **UUID (duid)**: `e0db37b4-1f27-4e70-8479-a0528774e7cd`
-2. **Numeric Client ID**: `100215609`
+1. **UUID (duid)**: `<YOUR_DEVICE_UUID>`
+2. **Numeric Client ID**: `<YOUR_CLIENT_ID>`
 
 **CRITICAL**: Alert endpoints require the **numeric client ID**, not the UUID!
 
