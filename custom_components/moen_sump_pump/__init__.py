@@ -596,13 +596,20 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Device %s: Pump still draining, pump_off candidate now %d mm",
                               device_duid, int(current_distance))
             elif delta < 0:
-                # Basin refilling - pump definitely done, confirm immediately
+                # Basin refilling - pump definitely done, confirm immediately.
+                # Use min of the two readings before the refill to filter single-poll ToF
+                # splash artifacts (bad reads during drain drag pump_off too high).
+                # history[-1] = current (just appended), [-2] = previous, [-3] = one before.
+                if len(history) >= 3:
+                    pending["pump_off"] = min(history[-2]["distance"], history[-3]["distance"])
                 self._confirm_pump_cycle(device_duid, pending, thresholds, reason="basin refilling")
                 del self._pending_cycles[device_duid]
             else:
                 # Flat/noisy reading - increment stable counter
                 pending["stable_count"] += 1
                 if pending["stable_count"] >= 2:
+                    if len(history) >= 3:
+                        pending["pump_off"] = min(history[-2]["distance"], history[-3]["distance"])
                     self._confirm_pump_cycle(device_duid, pending, thresholds, reason="stable readings")
                     del self._pending_cycles[device_duid]
         elif delta >= 20:

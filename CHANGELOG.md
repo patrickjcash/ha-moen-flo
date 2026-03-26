@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b7] - 2026-03-26
+
+### Fixed
+- **Estimated Water Level pump_off outlier filtering** — mirrored the lookback logic from b5/b6: at cycle confirmation, `pump_off` candidate is now replaced with `min(history[-2], history[-3])` to filter single-poll upward spikes during drain, the same way `pump_on` uses `max(history[-2], history[-3])` to filter downward spikes before the jump.
+
 ## [2.4.14b6] - 2026-03-26
 
 ### Fixed
