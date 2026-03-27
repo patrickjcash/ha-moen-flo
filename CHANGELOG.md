@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b11] - 2026-03-27
+
+### Fixed
+- **`history_mm` attribute not appearing on Pump On/Off Distance sensors** — `_calculate_pump_thresholds` was not including the raw history lists in its return value, so the sensor attribute resolved to `None` and was filtered out. History lists are now included in the returned dict.
+
 ## [2.4.14b10] - 2026-03-27
 
 ### Changed

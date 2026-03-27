@@ -707,6 +707,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             "pump_off_distance": median_off,
             "observation_count": len(on_history),
             "cycle_count": thresholds.get("cycle_count", 0),
+            "pump_on_history": list(on_history),
+            "pump_off_history": list(off_history),
         }
 
     async def disconnect_mqtt(self):
