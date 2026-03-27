@@ -164,6 +164,8 @@ class MoenFloNABWaterDistanceSensor(MoenFloNABSensorBase):
     _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
     _attr_suggested_display_precision = 1
     _attr_icon = "mdi:arrow-expand-vertical"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -234,7 +236,7 @@ class MoenFloNABBasinFullnessSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_basin_fullness"
-        self._attr_name = f"{device_name} Estimated Water Level"
+        self._attr_name = f"{device_name} Water Level"
 
     @property
     def native_value(self) -> float | None:
@@ -296,6 +298,7 @@ class MoenFloNABPumpOnDistanceSensor(MoenFloNABSensorBase):
     _attr_suggested_display_precision = 0
     _attr_icon = "mdi:gauge-full"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -328,6 +331,7 @@ class MoenFloNABPumpOnDistanceSensor(MoenFloNABSensorBase):
         attrs = {
             "event_count": pump_thresholds.get("cycle_count", 0),
             "calculation_method": "event_detection" if pump_thresholds.get("cycle_count", 0) > 0 else "min_max_fallback",
+            "history_mm": pump_thresholds.get("pump_on_history"),
         }
 
         # Add last event timestamp if available
@@ -347,6 +351,7 @@ class MoenFloNABPumpOffDistanceSensor(MoenFloNABSensorBase):
     _attr_suggested_display_precision = 0
     _attr_icon = "mdi:gauge-empty"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -379,6 +384,7 @@ class MoenFloNABPumpOffDistanceSensor(MoenFloNABSensorBase):
         attrs = {
             "event_count": pump_thresholds.get("cycle_count", 0),
             "calculation_method": "event_detection" if pump_thresholds.get("cycle_count", 0) > 0 else "min_max_fallback",
+            "history_mm": pump_thresholds.get("pump_off_history"),
         }
 
         # Add last event timestamp if available
@@ -498,6 +504,8 @@ class MoenFloNABPumpCapacitySensor(MoenFloNABSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -636,7 +644,7 @@ class MoenFloNABEstimatedNextRunSensor(MoenFloNABSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_duid, device_name)
         self._attr_unique_id = f"{device_duid}_estimated_next_run"
-        self._attr_name = f"{device_name} Estimated Next Pump Cycle"
+        self._attr_name = f"{device_name} Next Pump Cycle"
 
     @property
     def native_value(self) -> datetime | None:
@@ -869,6 +877,7 @@ class MoenFloNABPrimaryPumpManufacturerSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:factory"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -896,6 +905,7 @@ class MoenFloNABPrimaryPumpModelSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:pump"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -924,6 +934,7 @@ class MoenFloNABPrimaryPumpInstallDateSensor(MoenFloNABSensorBase):
     _attr_device_class = SensorDeviceClass.DATE
     _attr_icon = "mdi:calendar-check"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -960,6 +971,7 @@ class MoenFloNABBasinDiameterSensor(MoenFloNABSensorBase):
     _attr_device_class = SensorDeviceClass.DISTANCE
     _attr_icon = "mdi:diameter"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
 
     def __init__(
@@ -1018,6 +1030,7 @@ class MoenFloNABBackupPumpManufacturerSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:factory"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1045,6 +1058,7 @@ class MoenFloNABBackupPumpModelSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:pump"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1073,6 +1087,7 @@ class MoenFloNABBackupPumpInstallDateSensor(MoenFloNABSensorBase):
     _attr_device_class = SensorDeviceClass.DATE
     _attr_icon = "mdi:calendar-check"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1107,6 +1122,7 @@ class MoenFloNABBackupPumpTestFrequencySensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:calendar-clock"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1134,6 +1150,7 @@ class MoenFloNABBackupPumpBatteryWaterSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:battery-plus"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1163,6 +1180,7 @@ class MoenFloNABBackupPumpInstalledSensor(MoenFloNABSensorBase):
 
     _attr_icon = "mdi:pump"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1192,6 +1210,7 @@ class MoenFloNABPollingPeriodSensor(MoenFloNABSensorBase):
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = "s"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:timer-outline"
 
     def __init__(
@@ -1256,6 +1275,7 @@ class MoenFloNABPumpCyclesLast15MinSensor(MoenFloNABSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "cycles"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:counter"
 
     def __init__(

@@ -136,6 +136,7 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
     """Flood risk binary sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -292,6 +293,7 @@ class MoenFloNABCriticalAlertSensor(MoenFloNABBinarySensorBase):
     """Binary sensor for critical severity alerts."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -377,6 +379,7 @@ class MoenFloNABWarningAlertSensor(MoenFloNABBinarySensorBase):
     """Binary sensor for warning severity alerts."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,

@@ -5,6 +5,17 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b10] - 2026-03-27
+
+### Changed
+- **Entity cleanup**: Reclassified and disabled-by-default many entities to reduce dashboard clutter for new users
+  - "Estimated Next Pump Cycle" renamed to "Next Pump Cycle"
+  - "Estimated Water Level" renamed to "Water Level"
+  - Water Distance and Daily Pump Capacity moved to Diagnostic category
+  - Disabled by default: Water Distance, Daily Pump Capacity, Estimated Pump On/Off Distance, Polling Period, Pump Cycles Last 15 Min, all pump configuration sensors (Primary/Backup Pump Manufacturer, Model, Install Date, Basin Diameter, Backup Test Frequency, Battery Requires Water, Backup Installed), Critical Alerts, Warning Alerts, Flood Risk, Dismiss Alerts, Reset Primary/Backup Pump Status buttons
+  - Enabled by default: Active Alerts, Last Pump Cycle, Next Pump Cycle, Water Level, Temperature, Humidity, Water Detection, Battery, WiFi Signal, Connectivity, AC Power
+- **Estimated Pump On/Off Distance sensors**: Added `history_mm` attribute exposing the raw sliding window history list (up to 20 readings)
+
 ## [2.4.14b9] - 2026-03-27
 
 ### Changed

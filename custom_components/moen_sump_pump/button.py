@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -92,6 +93,8 @@ class MoenFloNABDismissAlertsButton(MoenFloNABButtonBase):
     """Button to dismiss all active alerts."""
 
     _attr_icon = "mdi:bell-cancel"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -141,6 +144,8 @@ class MoenFloNABResetPrimaryPumpButton(MoenFloNABButtonBase):
     """Button to reset primary pump status (clears 'Main Pump Not Stopping' class alerts)."""
 
     _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -176,6 +181,8 @@ class MoenFloNABResetBackupPumpButton(MoenFloNABButtonBase):
     """Button to reset backup pump status (clears 'Backup Pump Not Stopping' class alerts)."""
 
     _attr_icon = "mdi:pump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
