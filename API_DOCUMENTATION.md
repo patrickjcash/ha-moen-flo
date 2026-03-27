@@ -814,19 +814,19 @@ Alert IDs from three sources:
 | 213 | (unknown) | — | — | | Alert settings |
 | 218 | Backup Test Scheduled | info | false | Pathway notification; not shown in app when actionable alerts present; excluded from HA active count | Event logs |
 | 222 | (unknown) | — | — | | Alert settings |
-| 224 | High Water Level | warning | true | | Event logs + alert settings |
+| 224 | High Water Level | warning | true | | Event logs + alert settings + active alerts API |
 | 225 | Normal Water Level | info | — | | Event logs |
 | 230 | (unknown) | — | — | | Alert settings |
-| 232 | (unknown) | — | — | | Alert settings |
+| 232 | Overflow Water Level | critical | true | "Water in the sump basin is above overflow water level. Take immediate action." `ack_on_clear: false`. Confirmed during high-water event. | Active alerts API |
 | 236 | Sensor Too Close | critical | — | | Event logs |
 | 250 | (unknown) | — | — | | Alert settings |
-| 254 | Critical Flood Risk | critical | — | | Event logs + alert settings |
+| 254 | Critical Flood Risk | critical | true | "There is an imminent flood risk due to water level and equipment failure." `ack_on_clear: true`. Confirmed during high-water event. | Event logs + alert settings + active alerts API |
 | 256 | High Flood Risk | critical | — | | Event logs + alert settings |
-| 258 | Flood Risk | warning | — | | Event logs + alert settings |
+| 258 | Flood Risk | warning | true | `ack_on_clear: true`. Confirmed during high-water event. | Event logs + alert settings + active alerts API |
 | 259 | Flood Risk Cleared | info | — | | Event logs |
-| 260 | Main Pump Failed | critical | — | | Event logs + alert settings |
+| 260 | Main Pump Failed | critical | true | `ack_on_clear: true`. Confirmed during high-water event. | Event logs + alert settings + active alerts API |
 | 261 | Main Pump Reset | info | — | | Event logs |
-| 262 | Main Pump Overwhelmed | critical | — | | Event logs + alert settings |
+| 262 | Main Pump Overwhelmed | critical | true | `ack_on_clear: false`. Confirmed during high-water event. | Event logs + alert settings + active alerts API |
 | 263 | Main Pump Recovered | info | — | | Event logs |
 | 266 | Main Pump Not Stopping | warning | false | Pathway 2 alert; cleared by shadow command `crockCommand: rst_primary` (from `RESET_PRIMARY_STATE` enum in APK). Cannot be dismissed via normal acknowledge flow. | Event logs + alert settings + APK |
 | 267 | Main Pump Stops Normally | info | — | | Event logs |
@@ -844,9 +844,7 @@ Alert IDs from three sources:
 **Notification types seen in the Moen app UI, not yet mapped to IDs:**
 - Dead Battery (critical)
 - Backup Test Failed (critical)
-- Overflow Water Level (critical)
 - Water Detected (critical)
-- Backup Pump Failed (critical)
 - Backup Pump Overwhelmed (warning)
 - Device Lost (warning)
 - Water Level Sensor Communication Lost (warning)

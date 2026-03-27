@@ -5,6 +5,13 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14b9] - 2026-03-27
+
+### Changed
+- **Pump threshold detection rewritten: sliding window median replaces EMA** — previously the integration maintained a single running estimate using 95/5 exponential blending, which could be corrupted by outliers and had no reliable recovery path. The new approach stores raw pump_on and pump_off readings from the last 20 confirmed cycles and computes the median. Median is inherently outlier-resistant (tolerates up to 9 bad readings out of 20) with no clamp logic needed. Self-corrects from any broken state within at most 20 cycles. Cold starts use however many cycles have been observed so far.
+- On upgrade, existing scalar thresholds are automatically migrated to seed the history list, so the sensor resumes without waiting for a new cycle.
+- **Alert ID documentation updated** with confirmed data from live high-water event: IDs 232 (Overflow Water Level, critical), 254 (Critical Flood Risk), 258 (Flood Risk), 260 (Main Pump Failed), 262 (Main Pump Overwhelmed) — all with dismiss/ack_on_clear flags confirmed.
+
 ## [2.4.14b7] - 2026-03-26
 
 ### Fixed

@@ -27,6 +27,9 @@ MAX_POLL_INTERVAL = 300  # Maximum polling interval in seconds (5 minutes)
 ALERT_MAX_INTERVAL = 60  # Maximum interval when non-info alerts are active
 CYCLE_WINDOW_MINUTES = 15  # Look back window for counting recent cycles
 
+# Pump threshold detection constants
+PUMP_HISTORY_WINDOW = 20  # Number of recent cycles used to compute median pump on/off distances
+
 # Storage constants
 STORAGE_VERSION = 1
 STORAGE_KEY = "moen_sump_pump_thresholds"
@@ -108,6 +111,14 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             self._distance_history = data.get("distance_history", {})
             _LOGGER.info("Loaded pump thresholds for %d device(s) from storage", len(self._pump_thresholds))
             _LOGGER.info("Loaded distance history for %d device(s) from storage", len(self._distance_history))
+            # Migrate from old scalar format (pump_on_distance/pump_off_distance) to history lists
+            for device_duid, thresholds in self._pump_thresholds.items():
+                if "pump_on_distance" in thresholds and "pump_on_history" not in thresholds:
+                    old_on = thresholds.pop("pump_on_distance", None)
+                    old_off = thresholds.pop("pump_off_distance", None)
+                    thresholds["pump_on_history"] = [old_on] if old_on is not None else []
+                    thresholds["pump_off_history"] = [old_off] if old_off is not None else []
+                    _LOGGER.info("Device %s: migrated thresholds from scalar to history format", device_duid)
         else:
             _LOGGER.debug("No stored pump thresholds found, starting fresh")
 
@@ -577,8 +588,8 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialize thresholds if not present
         if device_duid not in self._pump_thresholds:
             self._pump_thresholds[device_duid] = {
-                "pump_on_distance": None,
-                "pump_off_distance": None,
+                "pump_on_history": [],
+                "pump_off_history": [],
                 "cycle_count": 0,
                 "last_cycle": None,
             }
@@ -596,44 +607,33 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Device %s: Pump still draining, pump_off candidate now %d mm",
                               device_duid, int(current_distance))
             elif delta < 0:
-                # Basin refilling - pump definitely done, confirm immediately.
-                # Use min of the two readings before the refill to filter single-poll ToF
-                # splash artifacts (bad reads during drain drag pump_off too high).
-                # history[-1] = current (just appended), [-2] = previous, [-3] = one before.
-                if len(history) >= 3:
-                    pending["pump_off"] = min(history[-2]["distance"], history[-3]["distance"])
+                # Basin refilling - pump definitely done, confirm immediately
                 self._confirm_pump_cycle(device_duid, pending, thresholds, reason="basin refilling")
                 del self._pending_cycles[device_duid]
             else:
                 # Flat/noisy reading - increment stable counter
                 pending["stable_count"] += 1
                 if pending["stable_count"] >= 2:
-                    if len(history) >= 3:
-                        pending["pump_off"] = min(history[-2]["distance"], history[-3]["distance"])
                     self._confirm_pump_cycle(device_duid, pending, thresholds, reason="stable readings")
                     del self._pending_cycles[device_duid]
         elif delta >= 20:
-            # Phase 1: large jump detected, enter pending state.
-            # Use max of the two readings before the jump to filter single-poll ToF
-            # splash artifacts (bad reads right as pump kicks on drag pump_on too low).
-            # history[-1] = current (just appended), [-2] = previous, [-3] = one before.
-            if len(history) >= 3:
-                pump_on_candidate = max(history[-2]["distance"], history[-3]["distance"])
-            else:
-                pump_on_candidate = previous_distance
+            # Phase 1: large jump detected, enter pending state
             self._pending_cycles[device_duid] = {
-                "pump_on": pump_on_candidate,
+                "pump_on": previous_distance,
                 "pump_off": current_distance,
                 "stable_count": 0,
             }
             _LOGGER.debug("Device %s: Pump cycle started (jump: %d mm), pump_on candidate: %d mm",
-                          device_duid, int(delta), int(pump_on_candidate))
+                          device_duid, int(delta), int(previous_distance))
 
     def _confirm_pump_cycle(self, device_duid: str, pending: dict, thresholds: dict, reason: str) -> None:
-        """Confirm a detected pump cycle and blend values into stored thresholds.
+        """Confirm a detected pump cycle and append to the sliding history window.
 
-        Uses 95/5 weighting (95% old, 5% new) to keep stored values stable
-        across many cycles, particularly during high-frequency rain events.
+        Stores the last PUMP_HISTORY_WINDOW raw pump_on and pump_off readings.
+        Thresholds are computed as the median of all readings in the window, making
+        them robust to outliers without any hard clamps or special-case logic.
+        Works correctly with any number of readings — cold starts use however many
+        cycles have been observed so far.
 
         Args:
             device_duid: Device UUID
@@ -641,79 +641,73 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
             thresholds: Stored thresholds dict to update in place
             reason: Human-readable confirmation reason for logging
         """
+        import statistics
         import time
 
-        pump_on = pending["pump_on"]
-        pump_off = pending["pump_off"]
+        pump_on = int(pending["pump_on"])
+        pump_off = int(pending["pump_off"])
 
-        old_on = thresholds.get("pump_on_distance")
-        old_off = thresholds.get("pump_off_distance")
+        on_history = thresholds.setdefault("pump_on_history", [])
+        off_history = thresholds.setdefault("pump_off_history", [])
 
-        if old_on is None or old_off is None:
-            new_on = int(pump_on)
-            new_off = int(pump_off)
-            _LOGGER.info("Device %s: First pump cycle confirmed (%s) - ON: %d mm, OFF: %d mm",
-                         device_duid, reason, new_on, new_off)
-        else:
-            # Clamp: if pump_on candidate is >30mm below stored, it's an outlier — skip blend.
-            if pump_on < old_on - 30:
-                _LOGGER.warning(
-                    "Device %s: pump_on candidate %d mm is >30mm below stored %d mm, skipping blend",
-                    device_duid, int(pump_on), old_on,
-                )
-                pump_on = old_on
-            # Clamp: if pump_off candidate is >30mm above stored, it's an outlier — skip blend.
-            if pump_off > old_off + 30:
-                _LOGGER.warning(
-                    "Device %s: pump_off candidate %d mm is >30mm above stored %d mm, skipping blend",
-                    device_duid, int(pump_off), old_off,
-                )
-                pump_off = old_off
-            new_on = int(0.95 * old_on + 0.05 * pump_on)
-            new_off = int(0.95 * old_off + 0.05 * pump_off)
-            _LOGGER.info("Device %s: Pump cycle confirmed (%s) - ON %d→%d mm, OFF %d→%d mm",
-                         device_duid, reason, old_on, new_on, old_off, new_off)
+        on_history.append(pump_on)
+        off_history.append(pump_off)
 
-        thresholds["pump_on_distance"] = new_on
-        thresholds["pump_off_distance"] = new_off
+        if len(on_history) > PUMP_HISTORY_WINDOW:
+            on_history.pop(0)
+        if len(off_history) > PUMP_HISTORY_WINDOW:
+            off_history.pop(0)
+
         thresholds["cycle_count"] = thresholds.get("cycle_count", 0) + 1
         thresholds["last_cycle"] = time.time()
+
+        median_on = int(statistics.median(on_history))
+        median_off = int(statistics.median(off_history))
+        _LOGGER.info(
+            "Device %s: Pump cycle confirmed (%s) - ON: %d mm, OFF: %d mm (median of %d readings)",
+            device_duid, reason, median_on, median_off, len(on_history),
+        )
         self.hass.async_create_task(self.async_save_thresholds())
 
     def _calculate_pump_thresholds(self, device_duid: str) -> dict:
-        """Return pump on/off distance thresholds from persistent event detection.
+        """Return pump on/off distance thresholds derived from the sliding history window.
 
-        PERSISTENT APPROACH:
-        Uses event-based detection to learn pump thresholds over time:
-        - Detects significant water distance drops (pump ON) and jumps (pump OFF)
-        - Stores thresholds persistently with weighted averaging
-        - Works across days/weeks/months between pump cycles
-        - No fallback logic - returns empty dict until first pump event detected
+        Computes the median of all stored pump_on and pump_off readings. Works with
+        any number of readings — returns values as soon as at least one cycle has
+        been confirmed. Cold-start readings will be less reliable but improve as the
+        window fills toward PUMP_HISTORY_WINDOW cycles.
 
         Args:
             device_duid: Device UUID
 
         Returns:
-            Dictionary with pump_on_distance, pump_off_distance, and observation count
-            Empty dict if no pump events detected yet
+            Dictionary with pump_on_distance, pump_off_distance, and observation count.
+            Empty dict if no pump events detected yet.
         """
-        # Return thresholds only if learned from actual pump events
-        if device_duid in self._pump_thresholds:
-            thresholds = self._pump_thresholds[device_duid]
-            pump_on = thresholds.get("pump_on_distance")
-            pump_off = thresholds.get("pump_off_distance")
+        import statistics
 
-            if pump_on is not None and pump_off is not None and pump_off > pump_on:
-                return {
-                    "pump_on_distance": pump_on,
-                    "pump_off_distance": pump_off,
-                    "observation_count": thresholds.get("cycle_count", 0),
-                    "cycle_count": thresholds.get("cycle_count", 0),
-                }
+        if device_duid not in self._pump_thresholds:
+            return {}
 
-        # No fallback - sensors show Unknown until first real pump event detected
-        # This prevents false updates from slow drift in water level
-        return {}
+        thresholds = self._pump_thresholds[device_duid]
+        on_history = thresholds.get("pump_on_history", [])
+        off_history = thresholds.get("pump_off_history", [])
+
+        if not on_history or not off_history:
+            return {}
+
+        median_on = int(statistics.median(on_history))
+        median_off = int(statistics.median(off_history))
+
+        if median_off <= median_on:
+            return {}
+
+        return {
+            "pump_on_distance": median_on,
+            "pump_off_distance": median_off,
+            "observation_count": len(on_history),
+            "cycle_count": thresholds.get("cycle_count", 0),
+        }
 
     async def disconnect_mqtt(self):
         """Disconnect all MQTT clients."""
