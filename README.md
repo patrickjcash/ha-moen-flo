@@ -13,50 +13,64 @@ A custom Home Assistant integration for the Moen Smart Sump Pump Monitor (model 
 > **⚠️ IMPORTANT DISCLAIMER**
 > This is an **unofficial integration** provided for **informational purposes only**. It may stop working at any time and should **NOT** be relied upon as a safety-critical monitoring system. See full [Disclaimer](#disclaimer) below. **Use at your own risk.**
 
-## What's New in v2.4.13
+## What's New in v2.4.14
 
-🔔 **Pump Status Reset Buttons** — Clear Pathway 2 alerts directly from HA!
+💧 **Water Level sensor** — accurate, outlier-resistant basin fullness
 
-- **Reset Primary Pump Status** button clears "Main Pump Not Stopping" and similar alerts that cannot be dismissed via the normal Dismiss Alerts flow
-- **Reset Backup Pump Status** button (only shown if backup pump is configured)
-- Equivalent to View Device → Primary/Backup Pump → Reset Status in the Moen app
+- Replaces "Basin Fullness" with a cleaner name and smarter algorithm
+- Uses a **sliding window median** over the last 20 pump cycles to set on/off thresholds — tolerates outliers and self-corrects from any corrupted state without manual intervention
+- Cold starts with however many cycles have been observed; improves as the window fills
 
-⏱️ **Estimated Next Pump Cycle** sensor — powered by the Moen backend's own prediction engine
+⏱️ **Next Pump Cycle sensor** — real-time prediction from the Moen backend
 
 - Shows the timestamp when the backend estimates the next cycle will occur
-- Updates automatically as pump patterns change
+- Displays as "X minutes ago" when pump is overdue (no false unavailable states)
 
-🔧 **Last Cycle staleness fixed** — cycles now appear within one poll interval without opening the app
+🧹 **Cleaner UI out of the box**
 
-- Coordinator mirrors the `drop_on` command the Moen app sends on every overview screen load
-- Closes cleanly with `updates_off` to conserve battery during power outages
-
-📊 **Alert quality improvements**
-
-- Info-severity alerts (e.g. "Backup Test Scheduled") excluded from Active Alerts count
-- Alert severity and title now sourced directly from the v2 alerts API (no longer "unknown")
+- Operational sensors (Active Alerts, Last/Next Pump Cycle, Water Level, Temperature, Humidity, Water Detection) enabled by default
+- Diagnostic and configuration sensors hidden by default — enable only what you need
 
 See the [CHANGELOG](CHANGELOG.md) for complete details.
 
 ## Features
 
-### Sensors
-- **Water Distance** - Distance from sensor to water surface (millimeters)
-  - Lower value = water closer to sensor (basin fuller)
-  - Higher value = water farther from sensor (basin emptier)
-  - Includes attributes: distance_cm, water_trend, flood_risk, basin_diameter
-- **Basin Fullness** - Percentage showing how full the sump basin is (0-100%)
-  - 100% = basin full (pump about to start)
-  - 0% = basin empty (pump just finished)
-  - Automatically learns your basin's min/max distances from observed readings
-  - Requires minimum 5 water distance readings to begin showing values
-  - Attributes include current distance, pump on/off distances, and observation count
-- **Temperature** - Ambient temperature in the sump pit (°F)
-- **Humidity** - Relative humidity in the sump pit (%)
-- **Daily Pump Capacity** - Percentage of daily pump capacity used
+### Sensors (enabled by default)
+- **Active Alerts** - Count of unacknowledged non-info alerts; attributes include full alert list with severity and timestamps
 - **Last Pump Cycle** - Timestamp of the last pump cycle with detailed water in/out data
-- **Estimated Next Pump Cycle** - Timestamp of the Moen backend's estimated next cycle
-- **Active Alerts** - Count of unacknowledged non-info alerts (matches mobile app behavior)
+- **Next Pump Cycle** - Timestamp of the Moen backend's estimated next cycle
+- **Water Level** - Basin fullness percentage (0–100%)
+  - 100% = basin full (pump about to start), 0% = basin empty (pump just finished)
+  - Computed from a sliding window median of the last 20 pump cycles; tolerates outliers and self-corrects without manual intervention
+- **Temperature** - Ambient temperature in the sump pit
+- **Humidity** - Relative humidity in the sump pit (%)
+
+### Sensors (disabled by default)
+- **Critical Alerts** - Binary sensor, ON when unacknowledged critical-severity alerts are present
+- **Warning Alerts** - Binary sensor, ON when unacknowledged warning-severity alerts are present
+- **Flood Risk** - Binary sensor, reflects device's flood risk assessment (low/medium/high/critical)
+- **Water Detection** - Binary sensor, detects water via the remote sensing cable (moisture sensor)
+
+### Diagnostic Sensors (enabled by default)
+- **Battery** - Battery percentage and remaining life
+- **WiFi Signal** - WiFi RSSI in dBm
+- **Connectivity** - Device online/offline status
+- **AC Power** - ON when device is on AC power, OFF when on battery backup
+
+### Diagnostic Sensors (disabled by default)
+- **Water Distance** - Raw distance from ToF sensor to water surface in mm
+- **Daily Pump Capacity** - Percentage of daily pump capacity used
+- **Estimated Pump On Distance** / **Estimated Pump Off Distance** - Sliding window median thresholds; include `history_mm` attribute with the last 20 raw readings
+- **Polling Period** - Current adaptive polling interval in seconds
+- **Pump Cycles Last 15 Minutes** - Recent cycle count (drives adaptive polling)
+- **Primary/Backup Pump Manufacturer, Model, Install Date** - Pump configuration data
+- **Basin Diameter** - Sump pit diameter
+- **Backup Pump Test Frequency, Battery Requires Water, Installed** - Backup pump configuration
+
+### Buttons (diagnostic, disabled by default)
+- **Reset Primary Pump Status** - Clears Pathway 2 pump alerts (e.g. "Main Pump Not Stopping")
+- **Reset Backup Pump Status** - Same for backup pump (only shown if backup pump is configured)
+- **Dismiss Alerts** - Acknowledges all dismissible active alerts
 
 ### Long-Term Statistics
 - **Pump Volume Statistics** - Automatically imported for Energy Dashboard integration
@@ -68,24 +82,6 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
   - Backfills weeks of historical data on first load
   - **See [Viewing Pump Volume Statistics](#viewing-pump-volume-statistics) below for access instructions**
 
-### Binary Sensors
-- **Flood Risk** - Reflects device's flood risk assessment (unknown, low, medium, high, critical)
-- **Critical Alerts** - Triggers when critical-severity unacknowledged alerts are present
-- **Warning Alerts** - Triggers when warning-severity unacknowledged alerts are present
-- **Water Detection** - Detects water via the remote sensing cable (moisture sensor)
-
-### Buttons
-- **Reset Primary Pump Status** - Clears Pathway 2 pump alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via the normal Dismiss Alerts flow
-- **Reset Backup Pump Status** - Same for backup pump (only shown if backup pump is configured)
-- **Dismiss Alerts** - Acknowledges all dismissible active alerts
-
-### Diagnostic Sensors
-These sensors are hidden by default and provide technical device information:
-- **Connectivity** - Device online/offline status with WiFi details
-- **Battery Level** - Battery percentage and remaining life
-- **WiFi Signal** - WiFi signal strength (RSSI in dBm)
-- **AC Power** - Shows if device is on AC power or battery backup
-- **Last Alert** - Most recent active alert with human-readable description
 
 ## Installation
 
@@ -168,24 +164,19 @@ The integration will automatically discover your devices and create all sensors.
 
 After setup, verify all entities are created:
 
-**Sensors:**
-- `sensor.sump_pump_water_distance`
-- `sensor.sump_pump_basin_fullness`
-- `sensor.sump_pump_temperature`
-- `sensor.sump_pump_humidity`
-- `sensor.sump_pump_daily_pump_capacity`
-- `sensor.sump_pump_last_pump_cycle`
+**Sensors (enabled by default):**
+- `sensor.{device}_active_alerts`
+- `sensor.{device}_last_pump_cycle`
+- `sensor.{device}_next_pump_cycle`
+- `sensor.{device}_water_level`
+- `sensor.{device}_temperature`
+- `sensor.{device}_humidity`
 
-**Binary Sensors:**
-- `binary_sensor.sump_pump_flood_risk`
-- `binary_sensor.sump_pump_water_detection`
-
-**Diagnostic Sensors (hidden by default):**
-- `binary_sensor.sump_pump_connectivity`
-- `binary_sensor.sump_pump_ac_power`
-- `sensor.sump_pump_battery`
-- `sensor.sump_pump_wifi_signal`
-- `sensor.sump_pump_last_alert`
+**Diagnostic Sensors (enabled by default):**
+- `binary_sensor.{device}_connectivity`
+- `binary_sensor.{device}_ac_power`
+- `sensor.{device}_battery`
+- `sensor.{device}_wifi_signal`
 
 Wait 5 minutes for the first update cycle, then verify sensor values match what you see in the Moen mobile app.
 
@@ -242,15 +233,14 @@ The sensor attributes provide detailed information about all active and recent i
 - Full alert state information
 - Up to 5 recent inactive alerts for historical context
 
-**Supported Alert Codes:**
-- 250: Water Detected
+**Confirmed Alert Codes:**
+- 232: Overflow Water Level (critical)
+- 250: Water Detected (critical)
 - 252: Water Was Detected (cleared)
 - 254: Critical Flood Risk
-- 256: High Flood Risk
-- 258: Primary Pump Failed
-- 260: Backup Pump Failed
-- 262: Primary Pump Lagging
-- 264: Backup Pump Lagging
+- 258: Flood Risk
+- 260: Main Pump Failed
+- 262: Main Pump Overwhelmed
 - 266: Backup Pump Test Failed
 - 268: Power Outage
 

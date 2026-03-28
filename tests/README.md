@@ -83,6 +83,78 @@ python tests/test_correct_acknowledge.py
 
 ---
 
+### dump_shadow.py
+Fetches and dumps the full MQTT device shadow state for all NAB devices.
+
+**Usage:**
+```bash
+. .venv/bin/activate
+python tests/dump_shadow.py
+```
+
+**Features:**
+- Connects to AWS IoT Core via MQTT and requests shadow/get for each device
+- Prints complete shadow JSON (state.reported) and exits cleanly
+- Useful for inspecting raw device state without running the full integration
+
+**Purpose:** Snapshot current device state for debugging or inspecting new shadow fields.
+
+---
+
+### dump_active_alerts.py
+Dumps raw active alerts from the v2 alerts API.
+
+**Usage:**
+```bash
+. .venv/bin/activate
+python tests/dump_active_alerts.py
+```
+
+**Features:**
+- Authenticates and calls the v2 active alerts endpoint for all devices
+- Prints full alert objects including severity, dismiss flags, ack_on_clear, and state
+- Used to discover and document new alert IDs as they appear in the wild
+
+**Purpose:** Reference tool for alert ID mapping and severity confirmation. Alert ID table in `API_DOCUMENTATION.md` was built with this script.
+
+---
+
+### test_reset_pump_status.py
+Tests the pump status reset endpoint (`fbgpg_usage_v1_put_usage_reset_device_capacity_prod`).
+
+**Usage:**
+```bash
+. .venv/bin/activate
+python tests/test_reset_pump_status.py
+```
+
+**Features:**
+- Calls the reset endpoint for both primary and backup pump
+- Verifies shadow state changes before and after
+- Confirms the correct parameter format (cognitoIdentityId + duid)
+
+**Purpose:** Validated the Reset Primary/Backup Pump Status buttons before implementation.
+
+---
+
+### test_estimated_next_cycle.py
+Compares `estimatedNextRun` vs `now + estimatedTimeUntilNextRunMS` accuracy.
+
+**Usage:**
+```bash
+. .venv/bin/activate
+python tests/test_estimated_next_cycle.py
+```
+
+**Features:**
+- Fetches `get_last_usage` for all devices
+- Computes both the static `estimatedNextRun` and the real-time `now + estimatedTimeUntilNextRunMS`
+- Displays both alongside app display text for visual comparison
+
+**Purpose:** Confirmed that `estimatedTimeUntilNextRunMS` matches the Moen app's display; `estimatedNextRun` can be hours stale.
+
+---
+
 ## Requirements
 
 ```bash
@@ -125,6 +197,11 @@ MOEN_PASSWORD=your_password
 - **Basin Fullness**: Event-based threshold detection (detects pump ON/OFF from distance changes)
 - **Error Handling**: Improved coordinator error handling prevents multi-hour update gaps
 - **Alert Sensors**: New Critical/Warning binary sensors, Active Alerts count sensor
+
+### v2.4.14 Changes (Water Level + UI Cleanup)
+- **Water Level**: Renamed from "Basin Fullness". Threshold detection now uses a sliding window median over the last 20 pump cycles instead of a 95/5 EMA blend. Median is outlier-resistant (tolerates up to 9 bad readings out of 20) and self-corrects from any broken state within 20 cycles.
+- **Next Pump Cycle**: Renamed from "Estimated Next Pump Cycle". Uses `now + estimatedTimeUntilNextRunMS` unconditionally; displays as "X minutes ago" when pump is overdue.
+- **Entity visibility**: Operational sensors enabled by default; diagnostic/config sensors disabled by default.
 
 ### v2.4.2 Changes (Alert Sensor Logic Fix)
 - **Alert Sensors**: Fixed alert sensors to match mobile app behavior

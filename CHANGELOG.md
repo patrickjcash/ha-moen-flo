@@ -5,6 +5,18 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.14] - 2026-03-28
+
+### Changed
+- **Water Level sensor** (renamed from "Basin Fullness"): Threshold detection rewritten using a sliding window median over the last 20 pump cycles. Tolerates up to 9 outlier readings per 20 with no clamp logic; self-corrects from any broken state within 20 cycles. Cold starts with however many cycles have been observed so far.
+- **Next Pump Cycle sensor** (renamed from "Estimated Next Pump Cycle"): Always computes `now + estimatedTimeUntilNextRunMS`; shows as "X minutes ago" when overdue. Only unavailable when the backend has no estimate.
+- **Entity visibility**: Operational sensors (Active Alerts, Last/Next Pump Cycle, Water Level, Temperature, Humidity, Water Detection, Battery, WiFi Signal, Connectivity, AC Power) enabled by default. All diagnostic and configuration sensors disabled by default.
+- **Estimated Pump On/Off Distance**: Added `history_mm` attribute exposing the raw 20-cycle sliding window.
+- **Alert IDs documented**: 232 (Overflow Water Level), 254 (Critical Flood Risk), 258 (Flood Risk), 260 (Main Pump Failed), 262 (Main Pump Overwhelmed).
+
+### Added
+- **Reset Primary/Backup Pump Status buttons**: Clear Pathway 2 alerts (e.g. "Main Pump Not Stopping") that cannot be dismissed via normal alert dismissal. Equivalent to View Device → Primary/Backup Pump → Reset Status in the Moen app.
+
 ## [2.4.14b11] - 2026-03-27
 
 ### Fixed
