@@ -395,6 +395,34 @@ class MoenFloNABClient:
         )
         return response if isinstance(response, dict) else {}
 
+    async def get_latest_firmware(self, client_id: int) -> Dict[str, Any]:
+        """Check for available firmware update.
+
+        Uses fbgpg_device_v1_device_get_latest_firmware_prod with the numeric
+        clientId (not the UUID duid). Confirmed working via APK source analysis:
+        NabLyhRepository.java passes clientId as the "duid" field.
+
+        Returns:
+            Dict with keys:
+                - current: currently installed firmware version (e.g. "v1.0.8w")
+                - latest: latest available firmware version
+                - upgrade: True if an update is available
+        """
+        response = await self._invoke_lambda(
+            "fbgpg_device_v1_device_get_latest_firmware_prod",
+            {"duid": str(client_id)},
+            parse=False,
+            escape=False,
+        )
+        body = response.get("body", response) if isinstance(response, dict) else {}
+        if isinstance(body, str):
+            import json
+            try:
+                body = json.loads(body)
+            except Exception:
+                body = {}
+        return body if isinstance(body, dict) else {}
+
     async def reset_pump_status(self, client_id: int, pump: str = "primary") -> bool:
         """Send a pump status reset command via the device shadow.
 

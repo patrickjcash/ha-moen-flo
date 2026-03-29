@@ -19,7 +19,7 @@ from .statistics import async_import_pump_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.UPDATE]
 
 # Adaptive polling constants
 MIN_POLL_INTERVAL = 10  # Minimum polling interval in seconds
@@ -439,6 +439,16 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         err
                     )
                     # Keep shadow alerts as fallback (already set above)
+
+                # Get firmware update status
+                try:
+                    firmware_info = await self.client.get_latest_firmware(client_id)
+                    device_data["firmware_info"] = firmware_info
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to get firmware info for device %s: %s", device_duid, err
+                    )
+                    device_data["firmware_info"] = {}
 
                 data[device_duid] = device_data
 

@@ -93,7 +93,7 @@ class MoenFloNABDismissAlertsButton(MoenFloNABButtonBase):
     """Button to dismiss all active alerts."""
 
     _attr_icon = "mdi:bell-cancel"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -144,7 +144,7 @@ class MoenFloNABResetPrimaryPumpButton(MoenFloNABButtonBase):
     """Button to reset primary pump status (clears 'Main Pump Not Stopping' class alerts)."""
 
     _attr_icon = "mdi:pump"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -181,7 +181,7 @@ class MoenFloNABResetBackupPumpButton(MoenFloNABButtonBase):
     """Button to reset backup pump status (clears 'Backup Pump Not Stopping' class alerts)."""
 
     _attr_icon = "mdi:pump"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
 
     def __init__(
