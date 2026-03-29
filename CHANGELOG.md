@@ -5,7 +5,7 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.15b1] - 2026-03-29
+## [2.4.15] - 2026-03-29
 
 ### Added
 - **Firmware update entity**: New `update` platform entity ("Firmware") shows installed vs. latest firmware version and displays an update notification when an upgrade is available. Discovered via APK analysis — calls `fbgpg_device_v1_device_get_latest_firmware_prod` with the device's numeric clientId.
