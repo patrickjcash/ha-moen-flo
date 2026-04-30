@@ -234,15 +234,19 @@ The sensor attributes provide detailed information about all active and recent i
 - Up to 5 recent inactive alerts for historical context
 
 **Confirmed Alert Codes:**
+- 218: Backup Test Scheduled (info, `dismiss: false`)
+- 224: High Water Level (warning)
 - 232: Overflow Water Level (critical)
 - 250: Water Detected (critical)
 - 252: Water Was Detected (cleared)
-- 254: Critical Flood Risk
-- 258: Flood Risk
-- 260: Main Pump Failed
-- 262: Main Pump Overwhelmed
-- 266: Backup Pump Test Failed
-- 268: Power Outage
+- 254: Critical Flood Risk (critical)
+- 256: High Flood Risk (critical)
+- 258: Flood Risk (warning)
+- 260: Main Pump Failed (critical)
+- 262: Main Pump Overwhelmed (critical)
+- 266: Main Pump Not Stopping (warning)
+- 268: Backup Pump Failed (critical)
+- 1718: Main Power Lost (warning, `dismiss: false`)
 
 Unknown alert codes are displayed as "Alert {code}" with full details preserved for troubleshooting.
 
