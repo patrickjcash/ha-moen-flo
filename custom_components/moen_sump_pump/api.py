@@ -901,8 +901,8 @@ class MoenFloNABMqttClient:
                 secret_access_key=aws_creds['secret_key'],
                 session_token=aws_creds['session_token']
             ),
-            client_id=f"moen-ha-{uuid.uuid4()}",
-            clean_session=True,
+            client_id=f"moen-ha-{self.client_id}",
+            clean_session=False,
             keep_alive_secs=30
         )
 
@@ -1028,6 +1028,8 @@ class MoenFloNABMqttClient:
 
         except Exception as err:
             _LOGGER.error(f"Failed to trigger sensor update: {err}")
+            if "CANCELLED_FOR_CLEAN_SESSION" in str(err):
+                self._connected = False
             return False
 
     async def request_shadow(self) -> bool:
@@ -1052,6 +1054,8 @@ class MoenFloNABMqttClient:
 
         except Exception as err:
             _LOGGER.error(f"Failed to request shadow: {err}")
+            if "CANCELLED_FOR_CLEAN_SESSION" in str(err):
+                self._connected = False
             return False
 
     @property
