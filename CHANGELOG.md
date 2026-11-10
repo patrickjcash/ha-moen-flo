@@ -5,12 +5,19 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.16b1] - 2026-11-10
 
 ### Fixed
 - **Sensor update commands sent over REST**: `sens_on` and `updates_off` now go through the Moen REST shadow update handler instead of an MQTT publish to `$aws/things/{clientId}/shadow/update`. The app credentials obtained from the Cognito identity pool are no longer allowed to publish to `shadow/update` (only to `shadow/get`), so the MQTT publish is denied and AWS IoT drops the session. MQTT is still used to subscribe to `shadow/get/accepted` and `shadow/update/accepted` and to request the shadow.
 - **`update_shadow()` request body**: the command is now nested under `payload`, which is what the update handler writes to the shadow's desired state. The previous flat body produced an empty desired state, which is why the January 2026 REST test appeared to show that REST could not trigger the device.
 - **Flood Risk binary sensor ON with no flood risk**: the sensor treated every `droplet.floodRisk` value other than `"unknown"` as a risk, so it turned ON whenever the backend reported `"normal"` (with both pumps `"operational"`). `"normal"` and `"unknown"` now both mean no risk; any other value still turns the sensor ON.
+- **Shadow update result checked**: `update_shadow()` now reports failure when the handler does not return `{"status": true}`, instead of always reporting success.
+- **MQTT readings no longer lost between polls**: `shadow/update/accepted` carries only the fields that changed (while streaming, just `crockTofDistance`) and also echoes desired-only commands with no reported state. Each message used to replace the stored reading, so by the time the coordinator read it, droplet, battery, Wi-Fi, connection and alert values had usually been dropped and fell back to the REST device list. Partial updates are now merged into the last full `shadow/get` reading, and desired-only echoes are ignored. Thanks to Zack Wagner (PR #7) for finding the echo case.
+- **Subscriptions restored after a dropped MQTT connection**: with a clean session, AWS IoT forgets subscriptions when the connection drops, so after the client reconnected on its own no shadow responses arrived until the next credential refresh (about 55 minutes). The client now resubscribes when the connection resumes, and marks itself disconnected while it is down.
+- **Old MQTT connection closed on reconnect**: `disconnect()` skipped connections already marked disconnected, leaving them reconnecting in the background. It now always closes the existing connection. A failed `shadow/get` publish also marks the client disconnected so the next poll reconnects.
+
+### Credits
+- REST shadow commands: Joe Logan (PR #5). Flood Risk fix: Zack Wagner (PR #8).
 
 ## [2.4.15] - 2026-03-29
 

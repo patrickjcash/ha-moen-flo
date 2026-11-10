@@ -620,13 +620,22 @@ class MoenFloNABClient:
         }
 
         try:
-            await self._invoke_lambda(
-                "smartwater-app-shadow-api-prod-update", payload
+            response = await self._invoke_lambda(
+                "smartwater-app-shadow-api-prod-update", payload,
+                parse=True, escape=True,
             )
-            return True
         except Exception as err:
             _LOGGER.error(f"Failed to update shadow: {err}")
             return False
+
+        # The handler returns {"status": true} once the command is written.
+        if isinstance(response, dict) and response.get("status"):
+            return True
+        _LOGGER.warning(
+            "Shadow update %s for device %s was not accepted: %s",
+            command, client_id, response,
+        )
+        return False
 
     async def get_shadow(self, client_id: int) -> Dict[str, Any]:
         """Get device shadow (live telemetry) using numeric client_id.
@@ -818,6 +827,23 @@ class MoenFloNABClient:
         return MoenFloNABMqttClient(client_id, self._id_token)
 
 
+def _merge_reported(base: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply a partial shadow update to a reported state, AWS IoT style.
+
+    Nested objects merge field by field and a null value deletes the field.
+    Returns a new dict so readers on other threads never see a half-merged one.
+    """
+    merged = dict(base)
+    for key, value in update.items():
+        if value is None:
+            merged.pop(key, None)
+        elif isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_reported(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 class MoenFloNABMqttClient:
     """MQTT client for real-time Moen Flo NAB device data.
 
@@ -909,8 +935,41 @@ class MoenFloNABMqttClient:
             ),
             client_id=f"moen-ha-{uuid.uuid4()}",
             clean_session=True,
-            keep_alive_secs=30
+            keep_alive_secs=30,
+            on_connection_interrupted=self._on_connection_interrupted,
+            on_connection_resumed=self._on_connection_resumed,
         )
+
+    def _on_connection_interrupted(self, connection, error, **kwargs):
+        """Mark the client disconnected while the CRT client reconnects on its own."""
+        _LOGGER.warning(f"MQTT connection interrupted for device {self.client_id}: {error}")
+        self._connected = False
+
+    def _on_connection_resumed(self, connection, return_code, session_present, **kwargs):
+        """Restore subscriptions after the CRT client reconnects.
+
+        With clean_session=True, AWS IoT forgets subscriptions when the
+        connection drops, so the reconnected session (session_present=False)
+        would never receive shadow responses unless we resubscribe.
+        """
+        if session_present:
+            _LOGGER.info(f"MQTT connection resumed for device {self.client_id}")
+            self._connected = True
+            return
+
+        resubscribe_future, _ = connection.resubscribe_existing_topics()
+
+        def _on_resubscribed(future):
+            try:
+                future.result()
+            except Exception as err:
+                # Leave _connected False so the coordinator rebuilds the connection.
+                _LOGGER.warning(f"MQTT resubscribe failed for device {self.client_id}: {err}")
+                return
+            _LOGGER.info(f"MQTT connection resumed and resubscribed for device {self.client_id}")
+            self._connected = True
+
+        resubscribe_future.add_done_callback(_on_resubscribed)
 
     async def connect(self) -> bool:
         """Establish MQTT connection to AWS IoT Core.
@@ -967,16 +1026,28 @@ class MoenFloNABMqttClient:
         """Handle incoming MQTT shadow messages."""
         try:
             data = json.loads(payload)
-            if "state" in data:
-                reported = data.get("state", {}).get("reported", {})
-                self._last_shadow_data = reported
+            reported = data.get("state", {}).get("reported")
+            if not reported:
+                # shadow/update/accepted also echoes desired-only updates such as
+                # the sens_on / updates_off commands. They carry no telemetry.
+                return
 
-                # Call all registered callbacks
-                for callback in self._shadow_callbacks:
-                    try:
-                        callback(reported)
-                    except Exception as err:
-                        _LOGGER.error(f"Error in shadow callback: {err}")
+            if topic.endswith("/get/accepted") or self._last_shadow_data is None:
+                # get/accepted carries the complete reported state.
+                merged = reported
+            else:
+                # update/accepted carries only the fields that changed (while
+                # streaming, just crockTofDistance), so merge it into the last
+                # full reading instead of replacing it.
+                merged = _merge_reported(self._last_shadow_data, reported)
+            self._last_shadow_data = merged
+
+            # Call all registered callbacks
+            for callback in self._shadow_callbacks:
+                try:
+                    callback(merged)
+                except Exception as err:
+                    _LOGGER.error(f"Error in shadow callback: {err}")
 
         except Exception as err:
             _LOGGER.error(f"Error parsing shadow message: {err}")
@@ -1058,6 +1129,8 @@ class MoenFloNABMqttClient:
 
         except Exception as err:
             _LOGGER.error(f"Failed to request shadow: {err}")
+            # A failed publish means the connection is unusable; reconnect next poll.
+            self._connected = False
             return False
 
     @property
@@ -1071,16 +1144,23 @@ class MoenFloNABMqttClient:
         return self._connected
 
     async def disconnect(self):
-        """Disconnect from MQTT."""
-        if self.mqtt_connection and self._connected:
+        """Disconnect from MQTT.
+
+        Runs whenever a connection object exists, not only while _connected is
+        True: an interrupted connection keeps auto-reconnecting in the
+        background until it is explicitly disconnected.
+        """
+        if self.mqtt_connection:
             try:
                 disconnect_future = self.mqtt_connection.disconnect()
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, disconnect_future.result)
                 _LOGGER.info(f"Disconnected from MQTT for device {self.client_id}")
             except Exception as err:
-                _LOGGER.error(f"Error disconnecting from MQTT: {err}")
+                # Already closed (e.g. AWS_ERROR_MQTT_NOT_CONNECTED) is fine here.
+                _LOGGER.debug(f"MQTT disconnect for device {self.client_id}: {err}")
             finally:
+                self.mqtt_connection = None
                 self._connected = False
 
     def needs_reconnect(self) -> bool:
