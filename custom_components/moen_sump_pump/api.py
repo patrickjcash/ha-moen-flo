@@ -901,8 +901,8 @@ class MoenFloNABMqttClient:
                 secret_access_key=aws_creds['secret_key'],
                 session_token=aws_creds['session_token']
             ),
-            client_id=f"moen-ha-{self.client_id}",
-            clean_session=False,
+            client_id=f"moen-ha-{uuid.uuid4()}",
+            clean_session=True,
             keep_alive_secs=30
         )
 
@@ -963,6 +963,12 @@ class MoenFloNABMqttClient:
             data = json.loads(payload)
             if "state" in data:
                 reported = data.get("state", {}).get("reported", {})
+                if not reported:
+                    # shadow/update/accepted also echoes desired-only updates
+                    # (e.g. the sens_on / updates_off commands). They carry no
+                    # telemetry, so don't let them overwrite the last reading.
+                    _LOGGER.debug("Ignoring shadow message on %s with no reported state", topic)
+                    return
                 self._last_shadow_data = reported
 
                 # Call all registered callbacks
