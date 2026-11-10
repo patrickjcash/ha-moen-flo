@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Sensor update commands sent over REST**: `sens_on` and `updates_off` now go through the Moen REST shadow update handler instead of an MQTT publish to `$aws/things/{clientId}/shadow/update`. The app credentials obtained from the Cognito identity pool are no longer allowed to publish to `shadow/update` (only to `shadow/get`), so the MQTT publish is denied and AWS IoT drops the session. MQTT is still used to subscribe to `shadow/get/accepted` and `shadow/update/accepted` and to request the shadow.
 - **`update_shadow()` request body**: the command is now nested under `payload`, which is what the update handler writes to the shadow's desired state. The previous flat body produced an empty desired state, which is why the January 2026 REST test appeared to show that REST could not trigger the device.
+- **Flood Risk binary sensor ON with no flood risk**: the sensor treated every `droplet.floodRisk` value other than `"unknown"` as a risk, so it turned ON whenever the backend reported `"normal"` (with both pumps `"operational"`). `"normal"` and `"unknown"` now both mean no risk; any other value still turns the sensor ON.
 
 ## [2.4.15] - 2026-03-29
 

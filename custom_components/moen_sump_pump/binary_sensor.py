@@ -19,6 +19,22 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# droplet.floodRisk values that mean there is no flood risk. Live devices report
+# strings ("normal" when the backend has assessed the basin, "unknown" when it
+# hasn't); any other value, including one Moen adds later, counts as a risk so
+# the sensor fails safe.
+NO_FLOOD_RISK_VALUES = frozenset({"normal", "unknown"})
+
+
+def _is_flood_risk(flood_risk: Any) -> bool:
+    """Return whether a droplet.floodRisk value indicates a flood risk."""
+    if isinstance(flood_risk, str):
+        value = flood_risk.strip().lower()
+        return bool(value) and value not in NO_FLOOD_RISK_VALUES
+    # API_DOCUMENTATION.md describes a 0-100 integer score; keep the existing
+    # behavior for that shape (a missing or zero score is no risk).
+    return bool(flood_risk)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -154,20 +170,12 @@ class MoenFloNABFloodRiskSensor(MoenFloNABBinarySensorBase):
         """Return true if there is a flood risk.
 
         This sensor reflects the device's flood risk assessment from the
-        droplet.floodRisk field. Possible values: unknown, low, medium, high, critical.
-
-        The sensor is ON when floodRisk is anything other than "unknown".
-        This matches the mobile app's flood risk display logic.
+        droplet.floodRisk field. The sensor is OFF when floodRisk is missing,
+        "normal" or "unknown", and ON for any other value.
         """
         info = self.device_data.get("info", {})
         droplet = info.get("droplet", {})
-
-        # Check droplet flood risk status (matches app logic)
-        flood_risk = droplet.get("floodRisk")
-        if flood_risk and flood_risk != "unknown":
-            return True
-
-        return False
+        return _is_flood_risk(droplet.get("floodRisk"))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

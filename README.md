@@ -48,7 +48,7 @@ See the [CHANGELOG](CHANGELOG.md) for complete details.
 ### Sensors (disabled by default)
 - **Critical Alerts** - Binary sensor, ON when unacknowledged critical-severity alerts are present
 - **Warning Alerts** - Binary sensor, ON when unacknowledged warning-severity alerts are present
-- **Flood Risk** - Binary sensor, reflects device's flood risk assessment (low/medium/high/critical)
+- **Flood Risk** - Binary sensor, reflects the device's flood risk assessment (OFF when the backend reports `normal` or `unknown`, ON otherwise)
 - **Water Detection** - Binary sensor, detects water via the remote sensing cable (moisture sensor)
 
 ### Diagnostic Sensors (enabled by default)
