@@ -170,7 +170,11 @@ $aws/things/12345678/shadow/update/accepted
 # Result: No streaming started, device did not respond
 ```
 
-**Conclusion**: The REST API `update_shadow()` endpoint updates the AWS cloud shadow but **does NOT publish the command to the device** via MQTT. Only direct MQTT publishing to `$aws/things/{clientId}/shadow/update` triggers the actual device. Therefore, **MQTT connection is required** - we cannot simplify to REST-only.
+**Original conclusion (January 2026)**: The REST API `update_shadow()` endpoint updates the AWS cloud shadow but does not reach the device, so MQTT publishing is required.
+
+**Correction (October 2026)**: The empty state above was caused by the request body, not by the endpoint. The update handler takes the command from a `payload` object in the body and writes that object to the shadow's `desired` state. The test sent `crockCommand` at the top level, so `payload` was missing and the handler wrote an empty desired state. With the body shaped as `{"clientId": "...", "payload": {"crockCommand": "sens_on"}}` (the same shape `reset_pump_status` and `enable_droplet_updates` already use) the handler writes `desired.crockCommand`, the shadow service emits the same `update/accepted` and `update/delta` messages as a direct MQTT publish, and the device starts streaming.
+
+The integration now sends `sens_on` and `updates_off` through REST. This also matters because the app credentials from the Cognito identity pool are no longer permitted to publish to `$aws/things/{clientId}/shadow/update` over MQTT; they may publish only to `shadow/get`. MQTT is still used to subscribe to `shadow/get/accepted` and `shadow/update/accepted` and to request the shadow.
 
 ## Additional Commands
 

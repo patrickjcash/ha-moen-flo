@@ -225,8 +225,11 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                 # Get live telemetry via MQTT
                 try:
                     if mqtt_client and mqtt_client.is_connected:
-                        # Trigger fresh sensor reading via MQTT
-                        await mqtt_client.trigger_sensor_update("sens_on")
+                        # Trigger fresh sensor reading. The command goes through the
+                        # Moen REST shadow update handler: the app credentials used for
+                        # MQTT are no longer allowed to publish to shadow/update, only
+                        # to shadow/get. The device reacts to the REST update the same way.
+                        await self.client.update_shadow(client_id, "sens_on")
                         # Wait for device to take reading and update shadow (~2 seconds)
                         await asyncio.sleep(2)
                         # Request shadow via MQTT to get the fresh reading
@@ -235,7 +238,7 @@ class MoenFloNABDataUpdateCoordinator(DataUpdateCoordinator):
                         await asyncio.sleep(1)
 
                         # Stop streaming to preserve battery
-                        await mqtt_client.trigger_sensor_update("updates_off")
+                        await self.client.update_shadow(client_id, "updates_off")
 
                         # Get shadow data from MQTT client
                         reported = mqtt_client.last_shadow_data

@@ -596,8 +596,10 @@ class MoenFloNABClient:
 
         CRITICAL: Must use numeric clientId, NOT UUID!
 
-        This sends a command to the device to take fresh sensor readings
-        and report them to the AWS IoT Shadow. Common commands:
+        This sends a command to the device through the Moen REST shadow
+        update handler, which writes it to the shadow's desired state. The
+        device reacts to it exactly as it does to an MQTT publish on
+        $aws/things/{clientId}/shadow/update. Common commands:
         - "sens_on": Turn sensors on and take fresh readings (default)
         - "updates_off": Turn updates off
 
@@ -608,9 +610,13 @@ class MoenFloNABClient:
         Returns:
             True if command was sent successfully
         """
+        # The update handler writes `payload` to the shadow's desired state,
+        # so the command must be nested under "payload" (same shape as
+        # reset_pump_status and enable_droplet_updates). A flat body produces
+        # an empty desired state and the device never sees the command.
         payload = {
-            "clientId": client_id,
-            "crockCommand": command
+            "clientId": str(client_id),
+            "payload": {"crockCommand": command},
         }
 
         try:
