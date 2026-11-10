@@ -5,6 +5,11 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Flood Risk binary sensor ON with no flood risk**: the sensor treated every `droplet.floodRisk` value other than `"unknown"` as a risk, so it turned ON whenever the backend reported `"normal"` (with both pumps `"operational"`). `"normal"` and `"unknown"` now both mean no risk; any other value still turns the sensor ON.
+
 ## [2.4.15] - 2026-03-29
 
 ### Added
