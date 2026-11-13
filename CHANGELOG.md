@@ -5,7 +5,7 @@ All notable changes to the Moen Flo NAB Home Assistant Integration will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.16b1] - 2026-11-10
+## [2.4.16] - 2026-11-13
 
 ### Fixed
 - **Sensor update commands sent over REST**: `sens_on` and `updates_off` now go through the Moen REST shadow update handler instead of an MQTT publish to `$aws/things/{clientId}/shadow/update`. The app credentials obtained from the Cognito identity pool are no longer allowed to publish to `shadow/update` (only to `shadow/get`), so the MQTT publish is denied and AWS IoT drops the session. MQTT is still used to subscribe to `shadow/get/accepted` and `shadow/update/accepted` and to request the shadow.
